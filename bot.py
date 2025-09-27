@@ -424,7 +424,13 @@ def get_local_ip():
 def run_flask():
     """Run Flask server in separate thread"""
     print("🌐 Starting Web Server on port 5000...")
-    app_flask.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+    
+    # Render compatible setup
+    port = int(os.environ.get("PORT", 5000))
+    
+    # Remove the flask_thread and run directly
+    print(f"🚀 Starting server on port {port}...")
+    app_flask.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 def run_telegram():
     """Run Telegram bot"""
@@ -444,26 +450,20 @@ if __name__ == "__main__":
     print("🚀 Starting Snake Ladder Telegram Game System...")
     print("=" * 50)
     
-    local_ip = get_local_ip()
-    bot_username = get_bot_username()
+    # REMOVE FLASK THREAD - Run Flask in main thread
+    print("🌐 Starting Flask Server...")
     
-    print(f"🌐 Local Access: http://localhost:5000")
-    print(f"🌐 Network Access: http://{local_ip}:5000")
-    print(f"🤖 Bot Username: @{bot_username}")
-    print("=" * 50)
-    print("💡 Instructions:")
-    print("1. Open Telegram and search for your bot")
-    print("2. Send /start command to the bot")
-    print("3. Click 'Play Game' to start playing")
-    print("=" * 50)
+    port = int(os.environ.get("PORT", 5000))
     
-    # Start Flask server in background thread
-    flask_thread = threading.Thread(target=run_flask)
+    # Start Flask in background thread
+    import threading
+    flask_thread = threading.Thread(target=lambda: app_flask.run(host='0.0.0.0', port=port, debug=False, use_reloader=False))
     flask_thread.daemon = True
     flask_thread.start()
     
     # Wait for Flask to start
-    time.sleep(3)
+    import time
+    time.sleep(5)
     
     # Start Telegram bot
     try:
@@ -473,4 +473,5 @@ if __name__ == "__main__":
         print(f"❌ Error: {e}")
 
         print("💡 Check your API_ID, API_HASH and BOT_TOKEN")
+
 
