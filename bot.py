@@ -138,7 +138,7 @@ def serve_game():
     <body>
         <div class="container">
             <h1>🐍 Snake Ladder Game</h1>
-            <p>🚀 This game is running locally on your PC</p>
+            <p>🚀 This game is running on Render</p>
             <p>💡 Use your Telegram bot to play the game</p>
             <p>🤖 Send <code>/start</code> to your bot</p>
             <br>
@@ -283,9 +283,8 @@ def api_create_game():
 # Telegram Bot Handlers
 @app_telegram.on_message(filters.command("start"))
 async def start_command(client, message):
-    # Local IP for WebApp URL
-    local_ip = get_local_ip()
-    web_app_url = f"https://shopwithme.liveblog365.com/index.html?user_id={message.from_user.id}"
+    # Use Render's URL or your custom domain
+    web_app_url = f"https://shopwithme.liveblog365.com/game.html?user_id={message.from_user.id}"
     
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🎮 Play Game", web_app=WebAppInfo(url=web_app_url))],
@@ -312,8 +311,7 @@ async def play_command(client, message):
     game.add_player(message.from_user.id, message.from_user.first_name)
     active_games[game_code] = game
     
-    local_ip = get_local_ip()
-  game_url = f"https://shopwithme.liveblog365.com/index.html?game_code={game_code}&user_id={message.from_user.id}"
+    game_url = f"https://shopwithme.liveblog365.com/game.html?game_code={game_code}&user_id={message.from_user.id}"
     
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🎮 Join Game", web_app=WebAppInfo(url=game_url))],
@@ -352,8 +350,7 @@ async def join_command(client, message):
     success = game.add_player(message.from_user.id, message.from_user.first_name)
     
     if success:
-        local_ip = get_local_ip()
-        game_url = f"https://shopwithme.liveblog365.com/index.html?game_code={game_code}&user_id={message.from_user.id}"
+        game_url = f"https://shopwithme.liveblog365.com/game.html?game_code={game_code}&user_id={message.from_user.id}"
         
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("🎮 Play Now", web_app=WebAppInfo(url=game_url))]
@@ -410,27 +407,15 @@ async def handle_callbacks(client, callback_query):
     elif data == "back_to_start":
         await start_command(client, callback_query.message)
 
-def get_local_ip():
-    """Get local IP address for network access"""
-    import socket
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-        return ip
-    except:
-        return "127.0.0.1"
+def get_web_app_url():
+    """Get the correct Web App URL for Render"""
+    # Use your custom domain or Render's provided URL
+    return "https://shopwithme.liveblog365.com"
 
 def run_flask():
-    """Run Flask server in separate thread"""
-    print("🌐 Starting Web Server on port 5000...")
-    
-    # Render compatible setup
+    """Run Flask server"""
     port = int(os.environ.get("PORT", 5000))
-    
-    # Remove the flask_thread and run directly
-    print(f"🚀 Starting server on port {port}...")
+    print(f"🌐 Starting Web Server on port {port}...")
     app_flask.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 def run_telegram():
@@ -451,31 +436,31 @@ if __name__ == "__main__":
     print("🚀 Starting Snake Ladder Telegram Game System...")
     print("=" * 50)
     
-    import os  # YEH LINE ADD KARO
+    web_app_url = get_web_app_url()
+    bot_username = get_bot_username()
     
-    print("🌐 Starting Flask Server...")
-
-    import os
-    port = int(os.environ.get("PORT", 5000))
+    print(f"🌐 Web App URL: {web_app_url}")
+    print(f"🤖 Bot Username: @{bot_username}")
+    print("=" * 50)
+    print("💡 Instructions:")
+    print("1. Open Telegram and search for your bot")
+    print("2. Send /start command to the bot")
+    print("3. Click 'Play Game' to start playing")
+    print("=" * 50)
     
-    # Start Flask in background thread
-    import threading
-    flask_thread = threading.Thread(target=lambda: app_flask.run(host='0.0.0.0', port=port, debug=False, use_reloader=False))
-    flask_thread.daemon = True
-    flask_thread.start()
+    # Start Flask server
+    try:
+        run_flask()
+    except Exception as e:
+        print(f"❌ Flask Error: {e}")
     
-    # Wait for Flask to start
-    import time
-    time.sleep(5)
-    
-    # Start Telegram bot
+    # Start Telegram bot (this won't run if Flask is running in same thread)
     try:
         print("🤖 Bot is starting...")
         app_telegram.run()
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"❌ Telegram Bot Error: {e}")
 
-        print("💡 Check your API_ID, API_HASH and BOT_TOKEN")
 
 
 
