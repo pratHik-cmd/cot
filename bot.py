@@ -7,6 +7,7 @@ import random
 import json
 import requests
 import time
+import os
 
 # Flask App for Frontend-Backend Communication
 app_flask = Flask(__name__)
@@ -450,9 +451,11 @@ if __name__ == "__main__":
     print("🚀 Starting Snake Ladder Telegram Game System...")
     print("=" * 50)
     
-    # REMOVE FLASK THREAD - Run Flask in main thread
-    print("🌐 Starting Flask Server...")
+    import os  # YEH LINE ADD KARO
     
+    print("🌐 Starting Flask Server...")
+
+    import os
     port = int(os.environ.get("PORT", 5000))
     
     # Start Flask in background thread
@@ -473,5 +476,6 @@ if __name__ == "__main__":
         print(f"❌ Error: {e}")
 
         print("💡 Check your API_ID, API_HASH and BOT_TOKEN")
+
 
 
