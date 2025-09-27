@@ -286,6 +286,29 @@ async def start_command(client, message):
     # Use Render's URL or your custom domain
   web_app_url = f"https://pratHik-cmd.github.io/snake-ladder-game/index.html?user_id={message.from_user.id}"
     
+   keyboard = InlineKeyboardMarkup([
+    [InlineKeyboardButton("🎮 Play Game", web_app=WebAppInfo(url=web_app_url))],
+    [InlineKeyboardButton("👥 Create Multiplayer Game", callback_data="create_multiplayer")],
+    [InlineKeyboardButton("📖 How to Play", callback_data="show_help")]
+])
+    
+    await message.reply_text(
+        "🐍 **Snake Ladder Bot** 🎲\n\n"
+        "Welcome to the classic Snake Ladder game!\n\n"
+        "**Features:**\n"
+        "• 🎮 Single Player & Multiplayer\n"
+        "• 👥 Play with friends\n"
+        "• 🎲 Smooth gameplay\n"
+        "• 📱 Mobile optimized\n\n"
+        "Click below to start playing:",
+        reply_markup=keyboard
+    )
+
+@app_telegram.on_message(filters.command("start"))
+async def start_command(client, message):
+    # Local IP for WebApp URL
+    web_app_url = f"https://yourusername.github.io/snake-ladder-game/index.html?user_id={message.from_user.id}"
+    
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🎮 Play Game", web_app=WebAppInfo(url=web_app_url))],
         [InlineKeyboardButton("👥 Create Multiplayer Game", callback_data="create_multiplayer")],
@@ -303,20 +326,6 @@ async def start_command(client, message):
         "Click below to start playing:",
         reply_markup=keyboard
     )
-
-@app_telegram.on_message(filters.command("play"))
-async def play_command(client, message):
-    game_code = ''.join(random.choices('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', k=6))
-    game = SnakeLadderGame(game_code, message.from_user.id)
-    game.add_player(message.from_user.id, message.from_user.first_name)
-    active_games[game_code] = game
-    
-  game_url = f"https://pratHik-cmd.github.io/snake-ladder-game/index.html?game_code={game_code}&user_id={message.from_user.id}"
-    
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🎮 Join Game", web_app=WebAppInfo(url=game_url))],
-        [InlineKeyboardButton("📤 Share Game Code", url=f"https://t.me/share/url?url=Join my game! Use code: {game_code}")]
-    ])
     
     await message.reply_text(
         f"🎮 **Multiplayer Game Created!**\n\n"
@@ -460,6 +469,7 @@ if __name__ == "__main__":
         app_telegram.run()
     except Exception as e:
         print(f"❌ Telegram Bot Error: {e}")
+
 
 
 
