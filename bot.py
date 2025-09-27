@@ -285,7 +285,7 @@ def api_create_game():
 async def start_command(client, message):
     # Local IP for WebApp URL
     local_ip = get_local_ip()
-    game_url = f"https://cot-8kof.onrender.com/index.html?game_code={game_code}&user_id={message.from_user.id}"
+    game_url = f"https://cot-8kof.onrender.com/board.html?game_code={game_code}&user_id={message.from_user.id}"
     
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🎮 Play Game", web_app=WebAppInfo(url=web_app_url))],
@@ -313,7 +313,7 @@ async def play_command(client, message):
     active_games[game_code] = game
     
     local_ip = get_local_ip()
-   game_url = f"https://cot-8kof.onrender.com/index.html?game_code={game_code}&user_id={message.from_user.id}"
+   game_url = f"https://cot-8kof.onrender.com/board.html?game_code={game_code}&user_id={message.from_user.id}"
     
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🎮 Join Game", web_app=WebAppInfo(url=game_url))],
@@ -353,7 +353,7 @@ async def join_command(client, message):
     
     if success:
         local_ip = get_local_ip()
-        game_url = f"https://cot-8kof.onrender.com/index.html?game_code={game_code}&user_id={message.from_user.id}"
+        game_url = f"https://cot-8kof.onrender.com/board.html?game_code={game_code}&user_id={message.from_user.id}"
         
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("🎮 Play Now", web_app=WebAppInfo(url=game_url))]
@@ -476,6 +476,7 @@ if __name__ == "__main__":
         print(f"❌ Error: {e}")
 
         print("💡 Check your API_ID, API_HASH and BOT_TOKEN")
+
 
 
 
