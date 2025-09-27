@@ -1,10 +1,9 @@
 from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import random
 import os
-import asyncio
 
 # Flask App for Frontend-Backend Communication
 app_flask = Flask(__name__)
@@ -26,10 +25,10 @@ class SnakeLadderGame:
         self.game_code = game_code
         self.host_id = host_id
         self.players = {}
-        self.status = "waiting"  # waiting, playing, finished
+        self.status = "waiting"
         self.current_turn = None
         self.moves_history = []
-        self.min_players = 2  # Minimum players required
+        self.min_players = 2
         
         self.snakes = {16: 6, 47: 26, 49: 11, 56: 53, 62: 19, 64: 60, 87: 24, 93: 73, 95: 75, 98: 78}
         self.ladders = {1: 38, 4: 14, 9: 31, 21: 42, 28: 84, 36: 44, 51: 67, 71: 91, 80: 100}
@@ -46,27 +45,27 @@ class SnakeLadderGame:
             'username': username,
             'position': 1,
             'color': color_options[len(self.players)],
-            'ready': False
+            'ready': True
         }
-        return True, f"{username} joined the game!"
+        return True, f"✅ {username} joined the game!"
     
     def remove_player(self, user_id):
         if user_id in self.players:
             username = self.players[user_id]['username']
             del self.players[user_id]
-            return True, f"{username} left the game!"
+            return True, f"❌ {username} left the game!"
         return False, "Player not found!"
     
     def start_game(self):
         if len(self.players) < self.min_players:
-            return False, f"Need at least {self.min_players} players to start!"
+            return False, f"❌ Need at least {self.min_players} players to start!"
         
         if self.status != "waiting":
-            return False, "Game has already started!"
+            return False, "❌ Game has already started!"
         
         self.status = "playing"
         self.current_turn = list(self.players.keys())[0]
-        return True, f"Game started with {len(self.players)} players!"
+        return True, f"🚀 Game started with {len(self.players)} players!"
     
     def make_move(self, user_id, dice_value):
         if self.status != "playing":
@@ -79,7 +78,7 @@ class SnakeLadderGame:
         new_position = player['position'] + dice_value
         
         if new_position > 100:
-            return {"error": "Need exact roll to win! Stay where you are."}
+            return {"error": "Need exact roll to win!"}
         
         move_info = {
             'player': user_id,
@@ -89,7 +88,6 @@ class SnakeLadderGame:
             'special_move': None
         }
         
-        # Check for snakes and ladders
         if new_position in self.snakes:
             move_info['special_move'] = f"snake_{new_position}_{self.snakes[new_position]}"
             new_position = self.snakes[new_position]
@@ -100,7 +98,6 @@ class SnakeLadderGame:
         player['position'] = new_position
         self.moves_history.append(move_info)
         
-        # Check for winner
         if new_position == 100:
             self.status = "finished"
             return {
@@ -109,7 +106,6 @@ class SnakeLadderGame:
                 "message": f"🎉 {player['username']} wins the game!"
             }
         
-        # Move to next player
         player_ids = list(self.players.keys())
         current_index = player_ids.index(user_id)
         next_index = (current_index + 1) % len(player_ids)
@@ -119,59 +115,13 @@ class SnakeLadderGame:
             "success": True, 
             "new_position": new_position, 
             "next_player": self.current_turn,
-            "message": f"🎲 {player['username']} rolled {dice_value}, moved to {new_position}"
-        }
-    
-    def get_game_info(self):
-        return {
-            'game_code': self.game_code,
-            'host_id': self.host_id,
-            'players': self.players,
-            'status': self.status,
-            'current_turn': self.current_turn,
-            'players_count': len(self.players),
-            'min_players': self.min_players,
-            'can_start': len(self.players) >= self.min_players and self.status == "waiting"
+            "message": f"🎲 {player['username']} rolled {dice_value}"
         }
 
 # Flask API Routes
 @app_flask.route('/')
 def serve_game():
-    return """
-    <html>
-    <head>
-        <title>Snake Ladder Game</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <style>
-            body { 
-                font-family: Arial, sans-serif; 
-                text-align: center; 
-                padding: 50px; 
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                color: white;
-                min-height: 100vh;
-                margin: 0;
-            }
-            .container {
-                background: rgba(255,255,255,0.1);
-                padding: 30px;
-                border-radius: 15px;
-                backdrop-filter: blur(10px);
-                max-width: 500px;
-                margin: 0 auto;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>🐍 Snake Ladder Game</h1>
-            <p>🚀 Backend is running successfully!</p>
-            <p>💡 Use your Telegram bot to play the game</p>
-            <p>🤖 Send /start to @Prarizz_bot</p>
-        </div>
-    </body>
-    </html>
-    """
+    return jsonify({"status": "Server is running", "message": "Snake Ladder Game API"})
 
 @app_flask.route('/api/game_state', methods=['POST'])
 def api_game_state():
@@ -181,7 +131,14 @@ def api_game_state():
         
         if game_code in active_games:
             game = active_games[game_code]
-            return jsonify(game.get_game_info())
+            return jsonify({
+                'game_code': game.game_code,
+                'players': game.players,
+                'status': game.status,
+                'current_turn': game.current_turn,
+                'players_count': len(game.players),
+                'can_start': len(game.players) >= game.min_players
+            })
         else:
             return jsonify({'error': 'Game not found'})
     except Exception as e:
@@ -227,111 +184,88 @@ def api_create_game():
     except Exception as e:
         return jsonify({'error': str(e)})
 
-@app_flask.route('/api/start_game', methods=['POST'])
-def api_start_game():
-    try:
-        data = request.get_json()
-        game_code = data.get('game_code')
-        user_id = data.get('user_id')
-        
-        if game_code in active_games:
-            game = active_games[game_code]
-            if game.host_id != int(user_id):
-                return jsonify({'error': 'Only host can start the game!'})
-            
-            success, message = game.start_game()
-            return jsonify({'success': success, 'message': message})
-        else:
-            return jsonify({'error': 'Game not found'})
-    except Exception as e:
-        return jsonify({'error': str(e)})
-
 # Telegram Bot Handlers
 @app_telegram.on_message(filters.command("start"))
 async def start_command(client, message):
-    web_app_url = f"https://pratHik-cmd.github.io/snake-ladder-game/index.html?user_id={message.from_user.id}"
-    
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🎮 Play Game", web_app=WebAppInfo(url=web_app_url))],
-        [InlineKeyboardButton("👥 Create Multiplayer Game", callback_data="create_multiplayer")],
+        [InlineKeyboardButton("🎮 Create Game", callback_data="create_game")],
         [InlineKeyboardButton("📖 How to Play", callback_data="show_help")]
     ])
     
     await message.reply_text(
         "🐍 **Snake Ladder Bot** 🎲\n\n"
         "Welcome to the classic Snake Ladder game!\n\n"
+        "**Quick Commands:**\n"
+        "• `/play` - Create multiplayer game\n"
+        "• `/join CODE` - Join existing game\n"
+        "• `/leave` - Leave current game\n\n"
         "**Features:**\n"
-        "• 🎮 Single Player & Multiplayer\n"
-        "• 👥 Play with friends (2-4 players)\n"
-        "• 🎲 Smooth gameplay\n"
-        "• 📱 Mobile optimized\n\n"
-        "**Multiplayer Rules:**\n"
-        "• Minimum 2 players required\n"
-        "• Host must start the game\n"
-        "• Turns go clockwise\n\n"
-        "Click below to start playing:",
+        "• 2-4 players multiplayer\n"
+        "• Real-time gameplay\n"
+        "• Snake & Ladder mechanics\n\n"
+        "Click below to get started:",
         reply_markup=keyboard
     )
 
 @app_telegram.on_message(filters.command("play"))
 async def play_command(client, message):
-    # Create new game
-    game_code = ''.join(random.choices('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', k=6))
-    game = SnakeLadderGame(game_code, message.from_user.id)
-    success, message_text = game.add_player(message.from_user.id, message.from_user.first_name)
-    
-    if success:
-        active_games[game_code] = game
+    try:
+        game_code = ''.join(random.choices('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', k=6))
+        game = SnakeLadderGame(game_code, message.from_user.id)
+        success, message_text = game.add_player(message.from_user.id, message.from_user.first_name)
         
-        # Create invitation message
-        invite_keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🎮 Join Game", callback_data=f"join_{game_code}")],
-            [InlineKeyboardButton("🚀 Start Game", callback_data=f"start_{game_code}")],
-            [InlineKeyboardButton("📤 Share Invite", url=f"https://t.me/share/url?url=Join my Snake Ladder game! Use code: {game_code}")]
-        ])
-        
-        await message.reply_text(
-            f"🎮 **Multiplayer Game Created!** 🐍\n\n"
-            f"**Host:** {message.from_user.first_name}\n"
-            f"**Game Code:** `{game_code}`\n"
-            f"**Players:** 1/4 👥\n"
-            f"**Status:** Waiting for players...\n\n"
-            f"**Invite friends using:**\n"
-            f"• Game Code: `{game_code}`\n"
-            f"• Command: `/join {game_code}`\n\n"
-            f"**Minimum 2 players needed to start!**",
-            reply_markup=invite_keyboard
-        )
-    else:
-        await message.reply_text(f"❌ {message_text}")
+        if success:
+            active_games[game_code] = game
+            
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("👥 View Players", callback_data=f"players_{game_code}")],
+                [InlineKeyboardButton("🚀 Start Game", callback_data=f"start_{game_code}")],
+                [InlineKeyboardButton("❌ Cancel Game", callback_data=f"cancel_{game_code}")]
+            ])
+            
+            await message.reply_text(
+                f"🎮 **Game Created Successfully!** ✅\n\n"
+                f"**Game Code:** `{game_code}`\n"
+                f"**Players:** 1/4 👥\n"
+                f"**Status:** Waiting for players...\n\n"
+                f"**Share this code with friends:**\n"
+                f"`{game_code}`\n\n"
+                f"**Friends should use:**\n"
+                f"`/join {game_code}`\n\n"
+                f"**Minimum 2 players needed to start!**",
+                reply_markup=keyboard
+            )
+        else:
+            await message.reply_text(f"❌ {message_text}")
+            
+    except Exception as e:
+        await message.reply_text("❌ Error creating game. Please try again.")
 
 @app_telegram.on_message(filters.command("join"))
 async def join_command(client, message):
     if len(message.command) < 2:
-        await message.reply_text("❌ Usage: `/join GAMECODE`\nExample: `/join ABC123`")
+        await message.reply_text("❌ **Usage:** `/join GAMECODE`\n**Example:** `/join ABC123`")
         return
     
     game_code = message.command[1].upper()
     
     if game_code not in active_games:
-        await message.reply_text("❌ Game not found! Check the game code.")
+        await message.reply_text("❌ Game not found! Please check the game code.")
         return
     
     game = active_games[game_code]
     
     if game.status != "waiting":
-        await message.reply_text("❌ Game has already started!")
+        await message.reply_text("❌ Game has already started! You cannot join now.")
         return
     
     success, message_text = game.add_player(message.from_user.id, message.from_user.first_name)
     
     if success:
-        # Update host about new player
-        game_url = f"https://pratHik-cmd.github.io/snake-ladder-game/index.html?game_code={game_code}&user_id={message.from_user.id}"
-        
+        # Player joined successfully
         player_keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🎮 Play Now", web_app=WebAppInfo(url=game_url))],
-            [InlineKeyboardButton("📤 Share Game", url=f"https://t.me/share/url?url=Join our Snake Ladder game! Code: {game_code}")]
+            [InlineKeyboardButton("👀 View Game", callback_data=f"view_{game_code}")],
+            [InlineKeyboardButton("❌ Leave Game", callback_data=f"leave_{game_code}")]
         ])
         
         await message.reply_text(
@@ -339,15 +273,15 @@ async def join_command(client, message):
             f"**Game Code:** `{game_code}`\n"
             f"**Host:** {game.players[game.host_id]['username']}\n"
             f"**Players:** {len(game.players)}/4 👥\n"
-            f"**Status:** { 'Ready to start! 🚀' if len(game.players) >= 2 else 'Waiting for more players...' }\n\n"
-            f"Host will start the game when ready!",
+            f"**Status:** {'Ready to start! 🚀' if len(game.players) >= 2 else 'Waiting for more players...'}\n\n"
+            f"Wait for the host to start the game!",
             reply_markup=player_keyboard
         )
         
-        # Notify host about new player
+        # Notify host
         host_keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("🚀 Start Game", callback_data=f"start_{game_code}")],
-            [InlineKeyboardButton("👀 View Players", callback_data=f"players_{game_code}")]
+            [InlineKeyboardButton("👥 View Players", callback_data=f"players_{game_code}")]
         ])
         
         await client.send_message(
@@ -355,7 +289,7 @@ async def join_command(client, message):
             f"👤 **{message.from_user.first_name} joined your game!**\n\n"
             f"**Game Code:** {game_code}\n"
             f"**Total players:** {len(game.players)}/4\n"
-            f"**Status:** { 'Ready to start! ✅' if len(game.players) >= 2 else 'Need more players...' }",
+            f"**Status:** {'Ready to start! ✅' if len(game.players) >= 2 else 'Need more players...'}",
             reply_markup=host_keyboard
         )
     else:
@@ -363,7 +297,6 @@ async def join_command(client, message):
 
 @app_telegram.on_message(filters.command("leave"))
 async def leave_command(client, message):
-    # Find games where user is playing
     user_games = []
     for code, game in active_games.items():
         if message.from_user.id in game.players:
@@ -374,12 +307,10 @@ async def leave_command(client, message):
         return
     
     if len(user_games) == 1:
-        # Leave the single game
         game_code, game = user_games[0]
         success, message_text = game.remove_player(message.from_user.id)
-        await message.reply_text(f"✅ {message_text}")
+        await message.reply_text(message_text)
         
-        # Notify host if game still exists
         if game_code in active_games and game.players:
             await client.send_message(
                 game.host_id,
@@ -387,7 +318,6 @@ async def leave_command(client, message):
                 f"Remaining players: {len(game.players)}/4"
             )
     else:
-        # Let user choose which game to leave
         keyboard_buttons = []
         for game_code, game in user_games:
             keyboard_buttons.append([InlineKeyboardButton(
@@ -403,7 +333,7 @@ async def handle_callbacks(client, callback_query):
     data = callback_query.data
     user_id = callback_query.from_user.id
     
-    if data == "create_multiplayer":
+    if data == "create_game":
         await play_command(client, callback_query.message)
     
     elif data == "show_help":
@@ -418,41 +348,15 @@ async def handle_callbacks(client, callback_query):
             "• `/play` - Create new game\n"
             "• `/join CODE` - Join existing game\n"
             "• `/leave` - Leave current game\n"
-            "• Host uses Start button to begin\n\n"
+            "• Host starts the game\n\n"
             "**Requirements:**\n"
             "• Minimum 2 players to start\n"
-            "• Maximum 4 players\n"
-            "• Host controls game start",
+            "• Maximum 4 players\n",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🎮 Create Game", callback_data="create_multiplayer")],
-                [InlineKeyboardButton("🔙 Back", callback_data="back_to_start")]
+                [InlineKeyboardButton("🎮 Create Game", callback_data="create_game")],
+                [InlineKeyboardButton("🔙 Back", callback_data="back_start")]
             ])
         )
-    
-    elif data.startswith("join_"):
-        game_code = data.replace("join_", "")
-        if game_code in active_games:
-            game = active_games[game_code]
-            if game.status == "waiting" and len(game.players) < 4:
-                success, message_text = game.add_player(user_id, callback_query.from_user.first_name)
-                if success:
-                    await callback_query.answer(f"Joined game {game_code}!")
-                    await callback_query.message.edit_text(
-                        f"✅ **Joined Game {game_code}**\n\n"
-                        f"Players: {len(game.players)}/4\n"
-                        f"Waiting for host to start...",
-                        reply_markup=InlineKeyboardMarkup([
-                            [InlineKeyboardButton("🎮 Play", web_app=WebAppInfo(
-                                url=f"https://pratHik-cmd.github.io/snake-ladder-game/index.html?game_code={game_code}&user_id={user_id}"
-                            ))]
-                        ])
-                    )
-                else:
-                    await callback_query.answer(message_text, show_alert=True)
-            else:
-                await callback_query.answer("Game is full or already started!", show_alert=True)
-        else:
-            await callback_query.answer("Game not found!", show_alert=True)
     
     elif data.startswith("start_"):
         game_code = data.replace("start_", "")
@@ -462,18 +366,15 @@ async def handle_callbacks(client, callback_query):
                 success, message_text = game.start_game()
                 if success:
                     # Notify all players
-                    game_url = f"https://pratHik-cmd.github.io/snake-ladder-game/index.html?game_code={game_code}"
                     for player_id in game.players:
                         try:
                             await client.send_message(
                                 player_id,
                                 f"🚀 **Game Started!** 🎮\n\n"
-                                f"Game Code: {game_code}\n"
-                                f"Players: {len(game.players)}\n"
-                                f"First turn: {game.players[game.current_turn]['username']}",
-                                reply_markup=InlineKeyboardMarkup([
-                                    [InlineKeyboardButton("🎮 Play Now", web_app=WebAppInfo(url=f"{game_url}&user_id={player_id}"))]
-                                ])
+                                f"**Game Code:** {game_code}\n"
+                                f"**Players:** {len(game.players)}\n"
+                                f"**First turn:** {game.players[game.current_turn]['username']}\n\n"
+                                f"Let's play! 🎲"
                             )
                         except:
                             continue
@@ -485,14 +386,28 @@ async def handle_callbacks(client, callback_query):
         else:
             await callback_query.answer("Game not found!", show_alert=True)
     
-    elif data == "start_playing":
+    elif data.startswith("players_"):
+        game_code = data.replace("players_", "")
+        if game_code in active_games:
+            game = active_games[game_code]
+            players_list = "\n".join([f"• {player['username']}" for player in game.players.values()])
+            await callback_query.message.edit_text(
+                f"👥 **Players in Game {game_code}**\n\n"
+                f"{players_list}\n\n"
+                f"**Total:** {len(game.players)}/4 players\n"
+                f"**Status:** {game.status}",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 Back", callback_data=f"view_{game_code}")]
+                ])
+            )
+    
+    elif data == "back_start":
         await start_command(client, callback_query.message)
     
-    elif data == "back_to_start":
-        await start_command(client, callback_query.message)
+    else:
+        await callback_query.answer("Button clicked!")
 
 def run_flask():
-    """Run Flask server"""
     port = int(os.environ.get("PORT", 5000))
     print(f"🌐 Starting Flask Server on port {port}...")
     app_flask.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
@@ -501,17 +416,14 @@ if __name__ == "__main__":
     print("🚀 Starting Snake Ladder Telegram Game System...")
     print("=" * 50)
     
-    # Start Flask server
     import threading
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
     
-    # Wait for Flask to start
     import time
-    time.sleep(3)
+    time.sleep(2)
     
-    # Start Telegram bot
     try:
         print("🤖 Starting Telegram Bot...")
         app_telegram.run()
