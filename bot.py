@@ -2,18 +2,14 @@ from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import threading
 import random
-import json
-import requests
-import time
 import os
 
 # Flask App for Frontend-Backend Communication
 app_flask = Flask(__name__)
 CORS(app_flask)
 
-# Telegram Bot Configuration - YAHAN APNA DATA DALNA
+# Telegram Bot Configuration
 API_ID = "23739381"
 API_HASH = "77784995504d21faf90ebb0a4bcfc37a"
 BOT_TOKEN = "8211158600:AAG8c1qJrRXKg-RGyZBgjOpXmwH4P3i4TEk"
@@ -121,100 +117,15 @@ def serve_game():
                 max-width: 500px;
                 margin: 0 auto;
             }
-            .btn { 
-                padding: 15px 30px; 
-                font-size: 18px; 
-                margin: 10px; 
-                cursor: pointer;
-                background: #4CAF50;
-                color: white;
-                border: none;
-                border-radius: 8px;
-                text-decoration: none;
-                display: inline-block;
-            }
         </style>
     </head>
     <body>
         <div class="container">
             <h1>🐍 Snake Ladder Game</h1>
-            <p>🚀 This game is running on Render</p>
+            <p>🚀 Backend is running successfully!</p>
             <p>💡 Use your Telegram bot to play the game</p>
-            <p>🤖 Send <code>/start</code> to your bot</p>
-            <br>
-            <button class="btn" onclick="window.close()">Close</button>
+            <p>🤖 Send /start to @Prarizz_bot</p>
         </div>
-    </body>
-    </html>
-    """
-
-@app_flask.route('/game.html')
-def serve_game_html():
-    # Get parameters from URL
-    game_code = request.args.get('game_code', '')
-    user_id = request.args.get('user_id', '')
-    
-    return f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Snake Ladder Game</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <script src="https://telegram.org/js/telegram-web-app.js"></script>
-        <style>
-            body {{ 
-                font-family: Arial, sans-serif; 
-                text-align: center; 
-                padding: 20px;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                color: white;
-                min-height: 100vh;
-                margin: 0;
-            }}
-            .game-container {{
-                background: rgba(255,255,255,0.1);
-                padding: 20px;
-                border-radius: 15px;
-                backdrop-filter: blur(10px);
-                max-width: 400px;
-                margin: 0 auto;
-            }}
-            .btn {{ 
-                padding: 12px 24px; 
-                font-size: 16px; 
-                margin: 10px; 
-                cursor: pointer;
-                background: #4CAF50;
-                color: white;
-                border: none;
-                border-radius: 8px;
-            }}
-        </style>
-    </head>
-    <body>
-        <div class="game-container">
-            <h1>🐍 Snake Ladder</h1>
-            <p>Game Code: <strong>{game_code}</strong></p>
-            <p>User ID: <strong>{user_id}</strong></p>
-            <br>
-            <p>🎮 Game would load here in full version</p>
-            <p>📱 This is a placeholder for Telegram Web App</p>
-            <br>
-            <button class="btn" onclick="playGame()">Play Demo</button>
-            <button class="btn" onclick="window.Telegram.WebApp.close()">Close</button>
-        </div>
-        
-        <script>
-            function playGame() {{
-                alert('🎲 Full game would load here!\\n\\nIn complete version, this would be the actual Snake Ladder game.');
-            }}
-            
-            // Initialize Telegram Web App
-            if (window.Telegram && window.Telegram.WebApp) {{
-                Telegram.WebApp.expand();
-                Telegram.WebApp.ready();
-            }}
-        </script>
     </body>
     </html>
     """
@@ -283,31 +194,7 @@ def api_create_game():
 # Telegram Bot Handlers
 @app_telegram.on_message(filters.command("start"))
 async def start_command(client, message):
-    # Use Render's URL or your custom domain
-  web_app_url = f"https://pratHik-cmd.github.io/snake-ladder-game/index.html?user_id={message.from_user.id}"
-    
-   keyboard = InlineKeyboardMarkup([
-    [InlineKeyboardButton("🎮 Play Game", web_app=WebAppInfo(url=web_app_url))],
-    [InlineKeyboardButton("👥 Create Multiplayer Game", callback_data="create_multiplayer")],
-    [InlineKeyboardButton("📖 How to Play", callback_data="show_help")]
-])
-    
-    await message.reply_text(
-        "🐍 **Snake Ladder Bot** 🎲\n\n"
-        "Welcome to the classic Snake Ladder game!\n\n"
-        "**Features:**\n"
-        "• 🎮 Single Player & Multiplayer\n"
-        "• 👥 Play with friends\n"
-        "• 🎲 Smooth gameplay\n"
-        "• 📱 Mobile optimized\n\n"
-        "Click below to start playing:",
-        reply_markup=keyboard
-    )
-
-@app_telegram.on_message(filters.command("start"))
-async def start_command(client, message):
-    # Local IP for WebApp URL
-    web_app_url = f"https://yourusername.github.io/snake-ladder-game/index.html?user_id={message.from_user.id}"
+    web_app_url = f"https://pratHik-cmd.github.io/snake-ladder-game/index.html?user_id={message.from_user.id}"
     
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🎮 Play Game", web_app=WebAppInfo(url=web_app_url))],
@@ -326,6 +213,20 @@ async def start_command(client, message):
         "Click below to start playing:",
         reply_markup=keyboard
     )
+
+@app_telegram.on_message(filters.command("play"))
+async def play_command(client, message):
+    game_code = ''.join(random.choices('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', k=6))
+    game = SnakeLadderGame(game_code, message.from_user.id)
+    game.add_player(message.from_user.id, message.from_user.first_name)
+    active_games[game_code] = game
+    
+    game_url = f"https://pratHik-cmd.github.io/snake-ladder-game/index.html?game_code={game_code}&user_id={message.from_user.id}"
+    
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🎮 Join Game", web_app=WebAppInfo(url=game_url))],
+        [InlineKeyboardButton("📤 Share Game Code", url=f"https://t.me/share/url?url=Join my Snake Ladder game! Use code: {game_code}")]
+    ])
     
     await message.reply_text(
         f"🎮 **Multiplayer Game Created!**\n\n"
@@ -359,7 +260,7 @@ async def join_command(client, message):
     success = game.add_player(message.from_user.id, message.from_user.first_name)
     
     if success:
-       game_url = f"https://pratHik-cmd.github.io/snake-ladder-game/index.html?game_code={game_code}&user_id={message.from_user.id}"
+        game_url = f"https://pratHik-cmd.github.io/snake-ladder-game/index.html?game_code={game_code}&user_id={message.from_user.id}"
         
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("🎮 Play Now", web_app=WebAppInfo(url=game_url))]
@@ -416,65 +317,29 @@ async def handle_callbacks(client, callback_query):
     elif data == "back_to_start":
         await start_command(client, callback_query.message)
 
-def get_web_app_url():
-    """Get the correct Web App URL for Render"""
-    # Use your custom domain or Render's provided URL
-    return "https://shopwithme.liveblog365.com"
-
 def run_flask():
     """Run Flask server"""
     port = int(os.environ.get("PORT", 5000))
-    print(f"🌐 Starting Web Server on port {port}...")
+    print(f"🌐 Starting Flask Server on port {port}...")
     app_flask.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
-
-def run_telegram():
-    """Run Telegram bot"""
-    print("🤖 Starting Telegram Bot...")
-    app_telegram.run()
-
-def get_bot_username():
-    """Safely get bot username"""
-    try:
-        with app_telegram:
-            me = app_telegram.get_me()
-            return me.username
-    except:
-        return "your_bot_username"
 
 if __name__ == "__main__":
     print("🚀 Starting Snake Ladder Telegram Game System...")
     print("=" * 50)
     
-    web_app_url = get_web_app_url()
-    bot_username = get_bot_username()
-    
-    print(f"🌐 Web App URL: {web_app_url}")
-    print(f"🤖 Bot Username: @{bot_username}")
-    print("=" * 50)
-    print("💡 Instructions:")
-    print("1. Open Telegram and search for your bot")
-    print("2. Send /start command to the bot")
-    print("3. Click 'Play Game' to start playing")
-    print("=" * 50)
-    
     # Start Flask server
-    try:
-        run_flask()
-    except Exception as e:
-        print(f"❌ Flask Error: {e}")
+    import threading
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
     
-    # Start Telegram bot (this won't run if Flask is running in same thread)
+    # Wait for Flask to start
+    import time
+    time.sleep(3)
+    
+    # Start Telegram bot
     try:
-        print("🤖 Bot is starting...")
+        print("🤖 Starting Telegram Bot...")
         app_telegram.run()
     except Exception as e:
-        print(f"❌ Telegram Bot Error: {e}")
-
-
-
-
-
-
-
-
-
+        print(f"❌ Error: {e}")
