@@ -284,7 +284,7 @@ def api_create_game():
 @app_telegram.on_message(filters.command("start"))
 async def start_command(client, message):
     # Use Render's URL or your custom domain
-    web_app_url = f"https://shopwithme.liveblog365.com/game.html?user_id={message.from_user.id}"
+  web_app_url = f"https://pratHik-cmd.github.io/snake-ladder-game/index.html?user_id={message.from_user.id}"
     
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🎮 Play Game", web_app=WebAppInfo(url=web_app_url))],
@@ -311,7 +311,7 @@ async def play_command(client, message):
     game.add_player(message.from_user.id, message.from_user.first_name)
     active_games[game_code] = game
     
-    game_url = f"https://shopwithme.liveblog365.com/game.html?game_code={game_code}&user_id={message.from_user.id}"
+  game_url = f"https://pratHik-cmd.github.io/snake-ladder-game/index.html?game_code={game_code}&user_id={message.from_user.id}"
     
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🎮 Join Game", web_app=WebAppInfo(url=game_url))],
@@ -350,7 +350,7 @@ async def join_command(client, message):
     success = game.add_player(message.from_user.id, message.from_user.first_name)
     
     if success:
-        game_url = f"https://shopwithme.liveblog365.com/game.html?game_code={game_code}&user_id={message.from_user.id}"
+       game_url = f"https://pratHik-cmd.github.io/snake-ladder-game/index.html?game_code={game_code}&user_id={message.from_user.id}"
         
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("🎮 Play Now", web_app=WebAppInfo(url=game_url))]
@@ -460,6 +460,7 @@ if __name__ == "__main__":
         app_telegram.run()
     except Exception as e:
         print(f"❌ Telegram Bot Error: {e}")
+
 
 
 
