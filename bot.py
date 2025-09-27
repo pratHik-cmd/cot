@@ -284,7 +284,7 @@ def api_create_game():
 async def start_command(client, message):
     # Local IP for WebApp URL
     local_ip = get_local_ip()
-    web_app_url = f"http://{local_ip}:5000/game.html?user_id={message.from_user.id}"
+    web_app_url = f"https://cot-8kof.onrender.com/game.html?user_id={message.from_user.id}"
     
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🎮 Play Game", web_app=WebAppInfo(url=web_app_url))],
@@ -352,7 +352,7 @@ async def join_command(client, message):
     
     if success:
         local_ip = get_local_ip()
-        game_url = f"http://{local_ip}:5000/game.html?game_code={game_code}&user_id={message.from_user.id}"
+        game_url = f"https://cot-8kof.onrender.com/game.html?game_code={game_code}&user_id={message.from_user.id}"
         
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("🎮 Play Now", web_app=WebAppInfo(url=game_url))]
@@ -471,4 +471,5 @@ if __name__ == "__main__":
         app_telegram.run()
     except Exception as e:
         print(f"❌ Error: {e}")
+
         print("💡 Check your API_ID, API_HASH and BOT_TOKEN")
