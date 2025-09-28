@@ -2,10 +2,13 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import random
 import os
-from datetime import datetime
+import uuid
+from flask_socketio import SocketIO, emit, join_room, leave_room
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = 'your-secret-key-here'
 CORS(app)
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Game Storage
 games = {}
@@ -18,8 +21,6 @@ class SnakeLadderGame:
         self.status = "waiting"
         self.current_turn = None
         self.max_players = 2
-        self.chat_messages = []  # Chat storage
-        self.voice_messages = []  # Voice messages storage
         
         self.snakes = {16: 6, 47: 26, 49: 11, 56: 53, 62: 19, 64: 60, 87: 24, 93: 73, 95: 75, 98: 78}
         self.ladders = {1: 38, 4: 14, 9: 31, 21: 42, 28: 84, 36: 44, 51: 67, 71: 91, 80: 100}
@@ -83,47 +84,6 @@ class SnakeLadderGame:
             "next_player": self.current_turn,
             "message": f"{player['username']} rolled {dice_value} and moved to {new_position}"
         }
-    
-    def add_chat_message(self, user_id, message, message_type="text"):
-        if str(user_id) not in self.players:
-            return False
-        
-        player = self.players[str(user_id)]
-        chat_message = {
-            'user_id': user_id,
-            'username': player['username'],
-            'message': message,
-            'type': message_type,
-            'timestamp': datetime.now().isoformat()
-        }
-        
-        self.chat_messages.append(chat_message)
-        # Keep only last 50 messages
-        if len(self.chat_messages) > 50:
-            self.chat_messages = self.chat_messages[-50:]
-        
-        return True
-    
-    def add_voice_message(self, user_id, audio_url, duration):
-        if str(user_id) not in self.players:
-            return False
-        
-        player = self.players[str(user_id)]
-        voice_message = {
-            'user_id': user_id,
-            'username': player['username'],
-            'audio_url': audio_url,
-            'duration': duration,
-            'type': 'voice',
-            'timestamp': datetime.now().isoformat()
-        }
-        
-        self.voice_messages.append(voice_message)
-        # Keep only last 20 voice messages
-        if len(self.voice_messages) > 20:
-            self.voice_messages = self.voice_messages[-20:]
-        
-        return True
 
 # API Routes
 @app.route('/')
@@ -179,9 +139,7 @@ def game_state():
         'players': game.players,
         'current_turn': game.current_turn,
         'status': game.status,
-        'game_code': game.game_code,
-        'chat_messages': game.chat_messages[-20:],  # Last 20 messages
-        'voice_messages': game.voice_messages[-10:]  # Last 10 voice messages
+        'game_code': game.game_code
     })
 
 @app.route('/api/make_move', methods=['POST'])
@@ -199,42 +157,80 @@ def make_move():
     
     return jsonify(result)
 
-@app.route('/api/send_message', methods=['POST'])
-def send_message():
-    data = request.get_json()
-    game_code = data.get('game_code')
-    user_id = data.get('user_id')
-    message = data.get('message')
-    message_type = data.get('type', 'text')
-    
-    if game_code not in games:
-        return jsonify({'success': False, 'error': 'Game not found'})
-    
-    game = games[game_code]
-    success = game.add_chat_message(user_id, message, message_type)
-    
-    return jsonify({'success': success})
-
-@app.route('/api/send_voice', methods=['POST'])
-def send_voice():
-    data = request.get_json()
-    game_code = data.get('game_code')
-    user_id = data.get('user_id')
-    audio_url = data.get('audio_url')
-    duration = data.get('duration', 0)
-    
-    if game_code not in games:
-        return jsonify({'success': False, 'error': 'Game not found'})
-    
-    game = games[game_code]
-    success = game.add_voice_message(user_id, audio_url, duration)
-    
-    return jsonify({'success': success})
-
 @app.route('/api/health')
 def health():
     return jsonify({'status': 'healthy', 'active_games': len(games)})
 
+# WebSocket Events for Voice Chat
+@socketio.on('connect')
+def handle_connect():
+    print('Client connected:', request.sid)
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    print('Client disconnected:', request.sid)
+
+@socketio.on('join_voice_room')
+def handle_join_voice_room(data):
+    game_code = data.get('game_code')
+    user_id = data.get('user_id')
+    username = data.get('username')
+    
+    if game_code and game_code in games:
+        room = f"voice_{game_code}"
+        join_room(room)
+        emit('user_joined_voice', {
+            'user_id': user_id,
+            'username': username,
+            'message': f'{username} joined the voice chat'
+        }, room=room)
+        print(f"User {username} joined voice room: {room}")
+
+@socketio.on('leave_voice_room')
+def handle_leave_voice_room(data):
+    game_code = data.get('game_code')
+    user_id = data.get('user_id')
+    username = data.get('username')
+    
+    if game_code and game_code in games:
+        room = f"voice_{game_code}"
+        leave_room(room)
+        emit('user_left_voice', {
+            'user_id': user_id,
+            'username': username,
+            'message': f'{username} left the voice chat'
+        }, room=room)
+        print(f"User {username} left voice room: {room}")
+
+@socketio.on('voice_data')
+def handle_voice_data(data):
+    game_code = data.get('game_code')
+    user_id = data.get('user_id')
+    audio_data = data.get('audio_data')
+    
+    if game_code and game_code in games:
+        room = f"voice_{game_code}"
+        emit('voice_stream', {
+            'user_id': user_id,
+            'audio_data': audio_data,
+            'timestamp': data.get('timestamp')
+        }, room=room, include_self=False)
+
+@socketio.on('voice_status')
+def handle_voice_status(data):
+    game_code = data.get('game_code')
+    user_id = data.get('user_id')
+    username = data.get('username')
+    is_speaking = data.get('is_speaking')
+    
+    if game_code and game_code in games:
+        room = f"voice_{game_code}"
+        emit('user_voice_status', {
+            'user_id': user_id,
+            'username': username,
+            'is_speaking': is_speaking
+        }, room=room)
+
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+    socketio.run(app, host='0.0.0.0', port=port, debug=True)
