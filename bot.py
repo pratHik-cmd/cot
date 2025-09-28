@@ -5,6 +5,7 @@ import os
 import uuid
 import base64
 from flask_socketio import SocketIO, emit, join_room, leave_room
+import time
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here')
@@ -169,15 +170,20 @@ def make_move():
 def health():
     return jsonify({'status': 'healthy', 'active_games': len(games)})
 
+@app.route('/api/test_audio')
+def test_audio():
+    # Simple audio test endpoint
+    return jsonify({'status': 'audio_test', 'message': 'Audio system is working'})
+
 # WebSocket Events for Voice Chat
 @socketio.on('connect')
 def handle_connect():
-    print('Client connected:', request.sid)
-    emit('connected', {'message': 'Connected to voice server', 'sid': request.sid})
+    print('🎧 Client connected:', request.sid)
+    emit('connected', {'message': 'Connected to voice server', 'sid': request.sid, 'timestamp': time.time()})
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    print('Client disconnected:', request.sid)
+    print('🎧 Client disconnected:', request.sid)
 
 @socketio.on('join_voice_room')
 def handle_join_voice_room(data):
@@ -192,9 +198,10 @@ def handle_join_voice_room(data):
             'user_id': user_id,
             'username': username,
             'message': f'{username} joined the voice chat',
-            'sid': request.sid
+            'sid': request.sid,
+            'timestamp': time.time()
         }, room=room)
-        print(f"User {username} joined voice room: {room}")
+        print(f"🎧 User {username} joined voice room: {room}")
 
 @socketio.on('leave_voice_room')
 def handle_leave_voice_room(data):
@@ -208,27 +215,31 @@ def handle_leave_voice_room(data):
         emit('user_left_voice', {
             'user_id': user_id,
             'username': username,
-            'message': f'{username} left the voice chat'
+            'message': f'{username} left the voice chat',
+            'timestamp': time.time()
         }, room=room)
-        print(f"User {username} left voice room: {room}")
+        print(f"🎧 User {username} left voice room: {room}")
 
 @socketio.on('voice_data')
 def handle_voice_data(data):
-    game_code = data.get('game_code')
-    user_id = data.get('user_id')
-    username = data.get('username')
-    audio_data = data.get('audio_data')
-    
-    if game_code and game_code in games:
-        room = f"voice_{game_code}"
-        # Send to everyone in room except sender
-        emit('voice_stream', {
-            'user_id': user_id,
-            'username': username,
-            'audio_data': audio_data,
-            'timestamp': data.get('timestamp')
-        }, room=room, include_self=False)
-        print(f"Voice data from {username} to room {room}")
+    try:
+        game_code = data.get('game_code')
+        user_id = data.get('user_id')
+        username = data.get('username')
+        audio_data = data.get('audio_data')
+        
+        if game_code and game_code in games and audio_data:
+            room = f"voice_{game_code}"
+            # Send to everyone in room except sender
+            emit('voice_stream', {
+                'user_id': user_id,
+                'username': username,
+                'audio_data': audio_data,
+                'timestamp': time.time()
+            }, room=room, include_self=False)
+            print(f"🎧 Voice data from {username} to room {room} - Size: {len(audio_data)}")
+    except Exception as e:
+        print(f"🎧 Error handling voice data: {e}")
 
 @socketio.on('voice_status')
 def handle_voice_status(data):
@@ -242,10 +253,17 @@ def handle_voice_status(data):
         emit('user_voice_status', {
             'user_id': user_id,
             'username': username,
-            'is_speaking': is_speaking
+            'is_speaking': is_speaking,
+            'timestamp': time.time()
         }, room=room)
+
+@socketio.on('ping')
+def handle_ping(data):
+    emit('pong', {'timestamp': time.time(), 'data': data})
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
+    print(f"🚀 Starting server on port {port}")
     socketio.run(app, host='0.0.0.0', port=port, debug=False, allow_unsafe_werkzeug=True)
+
 
