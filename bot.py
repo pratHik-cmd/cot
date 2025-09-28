@@ -41,7 +41,7 @@ class SnakeLadderGame:
         if len(self.players) == 2:
             self.status = "playing"
             player_ids = list(self.players.keys())
-            self.current_turn = player_ids[0]  # First player starts
+            self.current_turn = player_ids[0]
         
         return True, "Joined successfully"
     
@@ -49,7 +49,6 @@ class SnakeLadderGame:
         if self.status != "playing":
             return {"error": "Game is not active"}
         
-        # FIX: Convert both to string for comparison
         if str(user_id) != str(self.current_turn):
             return {"error": "Not your turn!"}
         
@@ -70,7 +69,6 @@ class SnakeLadderGame:
             self.status = "finished"
             return {"winner": user_id, "new_position": new_position}
         
-        # Switch to other player
         player_ids = list(self.players.keys())
         current_index = player_ids.index(str(user_id))
         next_index = (current_index + 1) % len(player_ids)
