@@ -6,9 +6,16 @@ import uuid
 from flask_socketio import SocketIO, emit, join_room, leave_room
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your-secret-key-here'
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here')
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
+
+# Use eventlet for better WebSocket performance if available
+try:
+    import eventlet
+    eventlet.monkey_patch()
+    socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+except ImportError:
+    socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Game Storage
 games = {}
@@ -165,6 +172,7 @@ def health():
 @socketio.on('connect')
 def handle_connect():
     print('Client connected:', request.sid)
+    emit('connected', {'message': 'Connected to voice server'})
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -233,4 +241,6 @@ def handle_voice_status(data):
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
-    socketio.run(app, host='0.0.0.0', port=port, debug=True)
+    # Use allow_unsafe_werkzeug for production
+    socketio.run(app, host='0.0.0.0', port=port, debug=False, allow_unsafe_werkzeug=True)
+
