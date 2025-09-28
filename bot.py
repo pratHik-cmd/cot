@@ -41,7 +41,7 @@ class SnakeLadderGame:
         if len(self.players) == 2:
             self.status = "playing"
             player_ids = list(self.players.keys())
-            self.current_turn = player_ids[0]
+            self.current_turn = player_ids[0]  # First player starts
         
         return True, "Joined successfully"
     
@@ -49,7 +49,8 @@ class SnakeLadderGame:
         if self.status != "playing":
             return {"error": "Game is not active"}
         
-        if str(user_id) != self.current_turn:
+        # FIX: Convert both to string for comparison
+        if str(user_id) != str(self.current_turn):
             return {"error": "Not your turn!"}
         
         player = self.players[str(user_id)]
@@ -69,12 +70,18 @@ class SnakeLadderGame:
             self.status = "finished"
             return {"winner": user_id, "new_position": new_position}
         
+        # Switch to other player
         player_ids = list(self.players.keys())
         current_index = player_ids.index(str(user_id))
         next_index = (current_index + 1) % len(player_ids)
         self.current_turn = player_ids[next_index]
         
-        return {"success": True, "new_position": new_position, "next_player": self.current_turn}
+        return {
+            "success": True, 
+            "new_position": new_position, 
+            "next_player": self.current_turn,
+            "message": f"{player['username']} rolled {dice_value} and moved to {new_position}"
+        }
 
 # API Routes
 @app.route('/')
@@ -155,4 +162,3 @@ def health():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-
