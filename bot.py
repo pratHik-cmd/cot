@@ -1,15 +1,20 @@
 from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+import threading
 import random
+import json
+import sqlite3
+from datetime import datetime, timedelta
+import time
 import os
 
-# Flask App for Frontend-Backend Communication
+# Flask App for Backend API
 app_flask = Flask(__name__)
 CORS(app_flask)
 
-# Telegram Bot Configuration
+# Telegram Bot Configuration - TERA EXISTING DATA
 API_ID = "23739381"
 API_HASH = "77784995504d21faf90ebb0a4bcfc37a"
 BOT_TOKEN = "8211158600:AAG8c1qJrRXKg-RGyZBgjOpXmwH4P3i4TEk"
@@ -17,111 +22,211 @@ BOT_TOKEN = "8211158600:AAG8c1qJrRXKg-RGyZBgjOpXmwH4P3i4TEk"
 # Initialize Telegram Bot
 app_telegram = Client("snake_ladder_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-# Game Data Storage
-active_games = {}
+# Frontend URL (GitHub Pages) - TERA EXISTING BACKEND URL
+FRONTEND_URL = "https://pratHik-cmd.github.io/snake-ladder-game"  # YEH CHANGE KARNA HAI
+BACKEND_URL = "https://cot-8kof.onrender.com/api"
 
-class SnakeLadderGame:
-    def __init__(self, game_code, host_id):
-        self.game_code = game_code
-        self.host_id = host_id
-        self.players = {}
-        self.status = "waiting"
-        self.current_turn = None
-        self.moves_history = []
-        self.min_players = 2
-        
-        self.snakes = {16: 6, 47: 26, 49: 11, 56: 53, 62: 19, 64: 60, 87: 24, 93: 73, 95: 75, 98: 78}
-        self.ladders = {1: 38, 4: 14, 9: 31, 21: 42, 28: 84, 36: 44, 51: 67, 71: 91, 80: 100}
+# Database Setup
+def init_db():
+    conn = sqlite3.connect('games.db')
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS games
+                 (game_code TEXT PRIMARY KEY, players TEXT, status TEXT, 
+                  current_turn INTEGER, created_at TIMESTAMP)''')
+    conn.commit()
+    conn.close()
+
+init_db()
+
+# Game Management
+class GameManager:
+    def __init__(self):
+        self.games = {}
+        self.snakes = {16:6,47:26,49:11,56:53,62:19,64:60,87:24,93:73,95:75,98:78}
+        self.ladders = {1:38,4:14,9:31,21:42,28:84,36:44,51:67,71:91,80:100}
     
-    def add_player(self, user_id, username):
-        if len(self.players) >= 4:
-            return False, "Game is full! Maximum 4 players allowed."
+    def create_game(self, user_id, username, game_type="multiplayer"):
+        game_code = ''.join(random.choices('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', k=6))
         
-        if user_id in self.players:
-            return False, "You are already in this game!"
-        
-        color_options = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4']
-        self.players[user_id] = {
-            'username': username,
-            'position': 1,
-            'color': color_options[len(self.players)],
-            'ready': True
+        players = {
+            str(user_id): {
+                'name': username,
+                'position': 1,
+                'color': '#ff6b6b',
+                'type': 'human'
+            }
         }
-        return True, f"✅ {username} joined the game!"
+        
+        game_data = {
+            'players': players,
+            'status': 'waiting' if game_type == "multiplayer" else 'playing',
+            'current_turn': user_id,
+            'game_type': game_type,
+            'created_at': datetime.now(),
+            'min_players': 2 if game_type == "multiplayer" else 1
+        }
+        
+        # Save to database
+        conn = sqlite3.connect('games.db')
+        c = conn.cursor()
+        c.execute('INSERT INTO games VALUES (?, ?, ?, ?, ?)',
+                  (game_code, json.dumps(players), game_data['status'], user_id, datetime.now()))
+        conn.commit()
+        conn.close()
+        
+        self.games[game_code] = game_data
+        return game_code
     
-    def remove_player(self, user_id):
-        if user_id in self.players:
-            username = self.players[user_id]['username']
-            del self.players[user_id]
-            return True, f"❌ {username} left the game!"
-        return False, "Player not found!"
+    def join_game(self, game_code, user_id, username):
+        if game_code not in self.games:
+            # Try to load from database
+            conn = sqlite3.connect('games.db')
+            c = conn.cursor()
+            c.execute('SELECT * FROM games WHERE game_code = ?', (game_code,))
+            result = c.fetchone()
+            conn.close()
+            
+            if not result:
+                return False, "Game not found"
+            
+            game_data = {
+                'players': json.loads(result[1]),
+                'status': result[2],
+                'current_turn': result[3],
+                'created_at': result[4],
+                'game_type': 'multiplayer',
+                'min_players': 2
+            }
+            self.games[game_code] = game_data
+        
+        game = self.games[game_code]
+        
+        if game['game_type'] != 'multiplayer':
+            return False, "This is a single player game"
+        
+        if len(game['players']) >= 4:
+            return False, "Game is full"
+        
+        if str(user_id) in game['players']:
+            return False, "Already in game"
+        
+        colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4']
+        game['players'][str(user_id)] = {
+            'name': username,
+            'position': 1,
+            'color': colors[len(game['players'])],
+            'type': 'human'
+        }
+        
+        # Start game if enough players
+        if len(game['players']) >= game['min_players']:
+            game['status'] = 'playing'
+        
+        # Update database
+        conn = sqlite3.connect('games.db')
+        c = conn.cursor()
+        c.execute('UPDATE games SET players = ?, status = ? WHERE game_code = ?',
+                  (json.dumps(game['players']), game['status'], game_code))
+        conn.commit()
+        conn.close()
+        
+        return True, "Joined successfully"
     
-    def start_game(self):
-        if len(self.players) < self.min_players:
-            return False, f"❌ Need at least {self.min_players} players to start!"
+    def make_move(self, game_code, user_id, dice_value):
+        if game_code not in self.games:
+            return {'error': 'Game not found'}
         
-        if self.status != "waiting":
-            return False, "❌ Game has already started!"
+        game = self.games[game_code]
         
-        self.status = "playing"
-        self.current_turn = list(self.players.keys())[0]
-        return True, f"🚀 Game started with {len(self.players)} players!"
-    
-    def make_move(self, user_id, dice_value):
-        if self.status != "playing":
-            return {"error": "Game is not active"}
+        if game['status'] != 'playing':
+            return {'error': 'Game not active'}
         
-        if user_id != self.current_turn:
-            return {"error": "Not your turn!"}
+        if game['current_turn'] != user_id:
+            return {'error': 'Not your turn'}
         
-        player = self.players[user_id]
+        player = game['players'][str(user_id)]
         new_position = player['position'] + dice_value
         
         if new_position > 100:
-            return {"error": "Need exact roll to win!"}
+            return {'error': 'Need exact roll'}
         
-        move_info = {
-            'player': user_id,
-            'dice_value': dice_value,
-            'from_position': player['position'],
-            'to_position': new_position,
-            'special_move': None
-        }
-        
+        # Check for snakes and ladders
         if new_position in self.snakes:
-            move_info['special_move'] = f"snake_{new_position}_{self.snakes[new_position]}"
             new_position = self.snakes[new_position]
         elif new_position in self.ladders:
-            move_info['special_move'] = f"ladder_{new_position}_{self.ladders[new_position]}"
             new_position = self.ladders[new_position]
         
         player['position'] = new_position
-        self.moves_history.append(move_info)
         
+        # Check for winner
         if new_position == 100:
-            self.status = "finished"
-            return {
-                "winner": user_id, 
-                "new_position": new_position,
-                "message": f"🎉 {player['username']} wins the game!"
-            }
+            game['status'] = 'finished'
+            return {'winner': user_id, 'new_position': new_position}
         
-        player_ids = list(self.players.keys())
-        current_index = player_ids.index(user_id)
+        # Next player's turn
+        player_ids = list(game['players'].keys())
+        current_index = player_ids.index(str(user_id))
         next_index = (current_index + 1) % len(player_ids)
-        self.current_turn = player_ids[next_index]
+        game['current_turn'] = int(player_ids[next_index])
         
-        return {
-            "success": True, 
-            "new_position": new_position, 
-            "next_player": self.current_turn,
-            "message": f"🎲 {player['username']} rolled {dice_value}"
-        }
+        # Update database
+        conn = sqlite3.connect('games.db')
+        c = conn.cursor()
+        c.execute('UPDATE games SET players = ?, current_turn = ?, status = ? WHERE game_code = ?',
+                  (json.dumps(game['players']), game['current_turn'], game['status'], game_code))
+        conn.commit()
+        conn.close()
+        
+        return {'success': True, 'new_position': new_position}
+
+game_manager = GameManager()
 
 # Flask API Routes
 @app_flask.route('/')
-def serve_game():
-    return jsonify({"status": "Server is running", "message": "Snake Ladder Game API"})
+def home():
+    return jsonify({
+        "status": "Snake Ladder Backend API",
+        "message": "Backend is running on Render.com!",
+        "frontend_url": FRONTEND_URL,
+        "backend_url": BACKEND_URL
+    })
+
+@app_flask.route('/api/health')
+def health_check():
+    return jsonify({"status": "healthy", "games_count": len(game_manager.games)})
+
+@app_flask.route('/api/create_game', methods=['POST'])
+def api_create_game():
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        username = data.get('username')
+        game_type = data.get('game_type', 'multiplayer')
+        
+        game_code = game_manager.create_game(user_id, username, game_type)
+        return jsonify({
+            'game_code': game_code, 
+            'status': 'created',
+            'game_type': game_type
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+@app_flask.route('/api/join_game', methods=['POST'])
+def api_join_game():
+    try:
+        data = request.get_json()
+        game_code = data.get('game_code')
+        user_id = data.get('user_id')
+        username = data.get('username')
+        
+        success, message = game_manager.join_game(game_code, user_id, username)
+        return jsonify({
+            'success': success, 
+            'error': None if success else message
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)})
 
 @app_flask.route('/api/game_state', methods=['POST'])
 def api_game_state():
@@ -129,15 +234,15 @@ def api_game_state():
         data = request.get_json()
         game_code = data.get('game_code')
         
-        if game_code in active_games:
-            game = active_games[game_code]
+        if game_code in game_manager.games:
+            game = game_manager.games[game_code]
             return jsonify({
-                'game_code': game.game_code,
-                'players': game.players,
-                'status': game.status,
-                'current_turn': game.current_turn,
-                'players_count': len(game.players),
-                'can_start': len(game.players) >= game.min_players
+                'players': game['players'],
+                'current_turn': game['current_turn'],
+                'status': game['status'],
+                'game_type': game['game_type'],
+                'min_players': game['min_players'],
+                'can_start': len(game['players']) >= game['min_players']
             })
         else:
             return jsonify({'error': 'Game not found'})
@@ -152,260 +257,120 @@ def api_make_move():
         user_id = data.get('user_id')
         dice_value = data.get('dice_value')
         
-        if game_code in active_games:
-            game = active_games[game_code]
-            result = game.make_move(int(user_id), dice_value)
-            return jsonify(result)
-        else:
-            return jsonify({'error': 'Game not found'})
-    except Exception as e:
-        return jsonify({'error': str(e)})
-
-@app_flask.route('/api/create_game', methods=['POST'])
-def api_create_game():
-    try:
-        data = request.get_json()
-        user_id = data.get('user_id')
-        username = data.get('username')
-        
-        game_code = ''.join(random.choices('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', k=6))
-        game = SnakeLadderGame(game_code, user_id)
-        success, message = game.add_player(int(user_id), username)
-        
-        if success:
-            active_games[game_code] = game
-            return jsonify({
-                'game_code': game_code, 
-                'status': 'created',
-                'message': message
-            })
-        else:
-            return jsonify({'error': message})
+        result = game_manager.make_move(game_code, user_id, dice_value)
+        return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)})
 
 # Telegram Bot Handlers
 @app_telegram.on_message(filters.command("start"))
 async def start_command(client, message):
+    web_app_url = f"{FRONTEND_URL}?user_id={message.from_user.id}"
+    
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🎮 Create Game", callback_data="create_game")],
+        [InlineKeyboardButton("🎮 Play Game", web_app=WebAppInfo(url=web_app_url))],
+        [InlineKeyboardButton("👥 Create Multiplayer", callback_data="create_multiplayer")],
         [InlineKeyboardButton("📖 How to Play", callback_data="show_help")]
     ])
     
     await message.reply_text(
         "🐍 **Snake Ladder Bot** 🎲\n\n"
         "Welcome to the classic Snake Ladder game!\n\n"
-        "**Quick Commands:**\n"
-        "• `/play` - Create multiplayer game\n"
-        "• `/join CODE` - Join existing game\n"
-        "• `/leave` - Leave current game\n\n"
-        "**Features:**\n"
-        "• 2-4 players multiplayer\n"
-        "• Real-time gameplay\n"
-        "• Snake & Ladder mechanics\n\n"
-        "Click below to get started:",
+        "**Multiplayer Rule:** Game starts only when at least 2 players join!\n\n"
+        "Click below to start playing:",
         reply_markup=keyboard
     )
 
 @app_telegram.on_message(filters.command("play"))
 async def play_command(client, message):
-    try:
-        game_code = ''.join(random.choices('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', k=6))
-        game = SnakeLadderGame(game_code, message.from_user.id)
-        success, message_text = game.add_player(message.from_user.id, message.from_user.first_name)
-        
-        if success:
-            active_games[game_code] = game
-            
-            keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("👥 View Players", callback_data=f"players_{game_code}")],
-                [InlineKeyboardButton("🚀 Start Game", callback_data=f"start_{game_code}")],
-                [InlineKeyboardButton("❌ Cancel Game", callback_data=f"cancel_{game_code}")]
-            ])
-            
-            await message.reply_text(
-                f"🎮 **Game Created Successfully!** ✅\n\n"
-                f"**Game Code:** `{game_code}`\n"
-                f"**Players:** 1/4 👥\n"
-                f"**Status:** Waiting for players...\n\n"
-                f"**Share this code with friends:**\n"
-                f"`{game_code}`\n\n"
-                f"**Friends should use:**\n"
-                f"`/join {game_code}`\n\n"
-                f"**Minimum 2 players needed to start!**",
-                reply_markup=keyboard
-            )
-        else:
-            await message.reply_text(f"❌ {message_text}")
-            
-    except Exception as e:
-        await message.reply_text("❌ Error creating game. Please try again.")
+    game_code = game_manager.create_game(message.from_user.id, message.from_user.first_name, "multiplayer")
+    
+    web_app_url = f"{FRONTEND_URL}?game_code={game_code}&user_id={message.from_user.id}"
+    
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🎮 Open Game", web_app=WebAppInfo(url=web_app_url))],
+        [InlineKeyboardButton("📤 Share Game Code", 
+         url=f"https://t.me/share/url?url=Join my Snake Ladder game! Code: {game_code}")]
+    ])
+    
+    await message.reply_text(
+        f"🎮 **Multiplayer Game Created!**\n\n"
+        f"**Game Code:** `{game_code}`\n"
+        f"**Players:** 1/4 👥\n"
+        f"**Status:** ⏳ Waiting for players...\n\n"
+        f"**Game will start when 2 players join!**\n\n"
+        f"Share this code with friends:\n"
+        f"`{game_code}`",
+        reply_markup=keyboard
+    )
 
 @app_telegram.on_message(filters.command("join"))
 async def join_command(client, message):
     if len(message.command) < 2:
-        await message.reply_text("❌ **Usage:** `/join GAMECODE`\n**Example:** `/join ABC123`")
+        await message.reply_text("❌ **Usage:** `/join GAMECODE`")
         return
     
     game_code = message.command[1].upper()
     
-    if game_code not in active_games:
-        await message.reply_text("❌ Game not found! Please check the game code.")
-        return
-    
-    game = active_games[game_code]
-    
-    if game.status != "waiting":
-        await message.reply_text("❌ Game has already started! You cannot join now.")
-        return
-    
-    success, message_text = game.add_player(message.from_user.id, message.from_user.first_name)
+    success, message_text = game_manager.join_game(game_code, message.from_user.id, message.from_user.first_name)
     
     if success:
-        # Player joined successfully
-        player_keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("👀 View Game", callback_data=f"view_{game_code}")],
-            [InlineKeyboardButton("❌ Leave Game", callback_data=f"leave_{game_code}")]
+        web_app_url = f"{FRONTEND_URL}?game_code={game_code}&user_id={message.from_user.id}"
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎮 Play Now", web_app=WebAppInfo(url=web_app_url))]
         ])
         
         await message.reply_text(
-            f"✅ **Joined Game Successfully!** 🎉\n\n"
+            f"✅ **Joined Game Successfully!**\n\n"
             f"**Game Code:** `{game_code}`\n"
-            f"**Host:** {game.players[game.host_id]['username']}\n"
-            f"**Players:** {len(game.players)}/4 👥\n"
-            f"**Status:** {'Ready to start! 🚀' if len(game.players) >= 2 else 'Waiting for more players...'}\n\n"
-            f"Wait for the host to start the game!",
-            reply_markup=player_keyboard
-        )
-        
-        # Notify host
-        host_keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🚀 Start Game", callback_data=f"start_{game_code}")],
-            [InlineKeyboardButton("👥 View Players", callback_data=f"players_{game_code}")]
-        ])
-        
-        await client.send_message(
-            game.host_id,
-            f"👤 **{message.from_user.first_name} joined your game!**\n\n"
-            f"**Game Code:** {game_code}\n"
-            f"**Total players:** {len(game.players)}/4\n"
-            f"**Status:** {'Ready to start! ✅' if len(game.players) >= 2 else 'Need more players...'}",
-            reply_markup=host_keyboard
+            f"Click below to play:",
+            reply_markup=keyboard
         )
     else:
         await message.reply_text(f"❌ {message_text}")
 
-@app_telegram.on_message(filters.command("leave"))
-async def leave_command(client, message):
-    user_games = []
-    for code, game in active_games.items():
-        if message.from_user.id in game.players:
-            user_games.append((code, game))
-    
-    if not user_games:
-        await message.reply_text("❌ You are not in any active games!")
-        return
-    
-    if len(user_games) == 1:
-        game_code, game = user_games[0]
-        success, message_text = game.remove_player(message.from_user.id)
-        await message.reply_text(message_text)
-        
-        if game_code in active_games and game.players:
-            await client.send_message(
-                game.host_id,
-                f"👤 **{message.from_user.first_name} left the game!**\n"
-                f"Remaining players: {len(game.players)}/4"
-            )
-    else:
-        keyboard_buttons = []
-        for game_code, game in user_games:
-            keyboard_buttons.append([InlineKeyboardButton(
-                f"Leave {game_code} ({len(game.players)} players)", 
-                callback_data=f"leave_{game_code}"
-            )])
-        
-        keyboard = InlineKeyboardMarkup(keyboard_buttons)
-        await message.reply_text("🎮 **Which game do you want to leave?**", reply_markup=keyboard)
-
 @app_telegram.on_callback_query()
 async def handle_callbacks(client, callback_query):
     data = callback_query.data
-    user_id = callback_query.from_user.id
     
-    if data == "create_game":
+    if data == "create_multiplayer":
         await play_command(client, callback_query.message)
     
     elif data == "show_help":
         await callback_query.message.edit_text(
-            "📖 **How to Play Snake Ladder** 🐍\n\n"
-            "**Game Rules:**\n"
-            "• 🎲 Roll dice to move forward\n"
-            "• 🐍 Land on snake head → Go to tail\n"
-            "• 🪜 Land on ladder bottom → Climb to top\n"
-            "• 🏁 First to reach exactly 100 wins!\n\n"
-            "**Multiplayer Commands:**\n"
-            "• `/play` - Create new game\n"
-            "• `/join CODE` - Join existing game\n"
-            "• `/leave` - Leave current game\n"
-            "• Host starts the game\n\n"
-            "**Requirements:**\n"
-            "• Minimum 2 players to start\n"
-            "• Maximum 4 players\n",
+            "📖 **Game Rules:**\n"
+            "• 🎲 Roll dice to move\n"
+            "• 🐍 Snake head → Go to tail\n" 
+            "• 🪜 Ladder bottom → Climb to top\n"
+            "• 🏁 Reach exactly 100 to win!\n\n"
+            "**Multiplayer:** Starts when 2+ players join",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🎮 Create Game", callback_data="create_game")],
-                [InlineKeyboardButton("🔙 Back", callback_data="back_start")]
+                [InlineKeyboardButton("🎮 Start Playing", callback_data="start_playing")]
             ])
         )
     
-    elif data.startswith("start_"):
-        game_code = data.replace("start_", "")
-        if game_code in active_games:
-            game = active_games[game_code]
-            if game.host_id == user_id:
-                success, message_text = game.start_game()
-                if success:
-                    # Notify all players
-                    for player_id in game.players:
-                        try:
-                            await client.send_message(
-                                player_id,
-                                f"🚀 **Game Started!** 🎮\n\n"
-                                f"**Game Code:** {game_code}\n"
-                                f"**Players:** {len(game.players)}\n"
-                                f"**First turn:** {game.players[game.current_turn]['username']}\n\n"
-                                f"Let's play! 🎲"
-                            )
-                        except:
-                            continue
-                    await callback_query.answer("Game started! Notified all players.")
-                else:
-                    await callback_query.answer(message_text, show_alert=True)
-            else:
-                await callback_query.answer("Only host can start the game!", show_alert=True)
-        else:
-            await callback_query.answer("Game not found!", show_alert=True)
-    
-    elif data.startswith("players_"):
-        game_code = data.replace("players_", "")
-        if game_code in active_games:
-            game = active_games[game_code]
-            players_list = "\n".join([f"• {player['username']}" for player in game.players.values()])
-            await callback_query.message.edit_text(
-                f"👥 **Players in Game {game_code}**\n\n"
-                f"{players_list}\n\n"
-                f"**Total:** {len(game.players)}/4 players\n"
-                f"**Status:** {game.status}",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔙 Back", callback_data=f"view_{game_code}")]
-                ])
-            )
-    
-    elif data == "back_start":
+    elif data == "start_playing":
         await start_command(client, callback_query.message)
-    
-    else:
-        await callback_query.answer("Button clicked!")
+
+def cleanup_games():
+    while True:
+        try:
+            cutoff = datetime.now() - timedelta(hours=2)
+            conn = sqlite3.connect('games.db')
+            c = conn.cursor()
+            c.execute('DELETE FROM games WHERE created_at < ?', (cutoff,))
+            conn.commit()
+            conn.close()
+            
+            for game_code in list(game_manager.games.keys()):
+                if game_code in game_manager.games and game_manager.games[game_code]['created_at'] < cutoff:
+                    del game_manager.games[game_code]
+                    
+        except Exception as e:
+            print(f"Cleanup error: {e}")
+        
+        time.sleep(3600)
 
 def run_flask():
     port = int(os.environ.get("PORT", 5000))
@@ -414,18 +379,22 @@ def run_flask():
 
 if __name__ == "__main__":
     print("🚀 Starting Snake Ladder Telegram Game System...")
-    print("=" * 50)
     
-    import threading
+    # Start cleanup thread
+    cleanup_thread = threading.Thread(target=cleanup_games, daemon=True)
+    cleanup_thread.start()
+    
+    # Start Flask in separate thread
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
     
-    import time
-    time.sleep(2)
+    # Wait for Flask to start
+    time.sleep(3)
     
+    # Start Telegram bot
     try:
-        print("🤖 Starting Telegram Bot...")
+        print("🤖 Bot is starting...")
         app_telegram.run()
     except Exception as e:
         print(f"❌ Error: {e}")
