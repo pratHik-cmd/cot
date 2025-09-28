@@ -3,6 +3,7 @@ from flask_cors import CORS
 import random
 import os
 import uuid
+import base64
 from flask_socketio import SocketIO, emit, join_room, leave_room
 
 app = Flask(__name__)
@@ -13,9 +14,9 @@ CORS(app)
 try:
     import eventlet
     eventlet.monkey_patch()
-    socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+    socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', logger=True, engineio_logger=True)
 except ImportError:
-    socketio = SocketIO(app, cors_allowed_origins="*")
+    socketio = SocketIO(app, cors_allowed_origins="*", logger=True, engineio_logger=True)
 
 # Game Storage
 games = {}
@@ -172,7 +173,7 @@ def health():
 @socketio.on('connect')
 def handle_connect():
     print('Client connected:', request.sid)
-    emit('connected', {'message': 'Connected to voice server'})
+    emit('connected', {'message': 'Connected to voice server', 'sid': request.sid})
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -190,7 +191,8 @@ def handle_join_voice_room(data):
         emit('user_joined_voice', {
             'user_id': user_id,
             'username': username,
-            'message': f'{username} joined the voice chat'
+            'message': f'{username} joined the voice chat',
+            'sid': request.sid
         }, room=room)
         print(f"User {username} joined voice room: {room}")
 
@@ -214,15 +216,19 @@ def handle_leave_voice_room(data):
 def handle_voice_data(data):
     game_code = data.get('game_code')
     user_id = data.get('user_id')
+    username = data.get('username')
     audio_data = data.get('audio_data')
     
     if game_code and game_code in games:
         room = f"voice_{game_code}"
+        # Send to everyone in room except sender
         emit('voice_stream', {
             'user_id': user_id,
+            'username': username,
             'audio_data': audio_data,
             'timestamp': data.get('timestamp')
         }, room=room, include_self=False)
+        print(f"Voice data from {username} to room {room}")
 
 @socketio.on('voice_status')
 def handle_voice_status(data):
@@ -241,6 +247,5 @@ def handle_voice_status(data):
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
-    # Use allow_unsafe_werkzeug for production
     socketio.run(app, host='0.0.0.0', port=port, debug=False, allow_unsafe_werkzeug=True)
 
