@@ -6,12 +6,17 @@ import uuid
 import base64
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import time
+import logging
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here')
 CORS(app)
 
-# Use eventlet for better WebSocket performance if available
+# Use eventlet for better WebSocket performance
 try:
     import eventlet
     eventlet.monkey_patch()
@@ -170,11 +175,6 @@ def make_move():
 def health():
     return jsonify({'status': 'healthy', 'active_games': len(games)})
 
-@app.route('/api/test_audio')
-def test_audio():
-    # Simple audio test endpoint
-    return jsonify({'status': 'audio_test', 'message': 'Audio system is working'})
-
 # WebSocket Events for Voice Chat
 @socketio.on('connect')
 def handle_connect():
@@ -237,7 +237,7 @@ def handle_voice_data(data):
                 'audio_data': audio_data,
                 'timestamp': time.time()
             }, room=room, include_self=False)
-            print(f"🎧 Voice data from {username} to room {room} - Size: {len(audio_data)}")
+            print(f"🎧 Voice data from {username} to room {room}")
     except Exception as e:
         print(f"🎧 Error handling voice data: {e}")
 
@@ -265,5 +265,6 @@ if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     print(f"🚀 Starting server on port {port}")
     socketio.run(app, host='0.0.0.0', port=port, debug=False, allow_unsafe_werkzeug=True)
+
 
 
