@@ -1,400 +1,407 @@
-from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-import threading
-import random
-import json
-import sqlite3
-from datetime import datetime, timedelta
-import time
-import os
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snake Ladder - 2 Player Game</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh; padding: 20px; color: white;
+        }
+        .container { max-width: 400px; margin: 0 auto; }
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px);
+            border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 20px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+        h1 { text-align: center; font-size: 2.2em; margin-bottom: 10px; }
+        .mode-buttons { display: grid; gap: 15px; margin: 20px 0; }
+        .btn {
+            padding: 15px; border: none; border-radius: 15px; font-size: 1.1em;
+            font-weight: 600; cursor: pointer; transition: all 0.3s ease;
+        }
+        .btn-primary { background: linear-gradient(135deg, #ff6b6b, #ee5a24); color: white; }
+        .btn-secondary { background: linear-gradient(135deg, #4ecdc4, #44a08d); color: white; }
+        .board {
+            display: grid; grid-template-columns: repeat(10, 1fr); 
+            width: 100%; aspect-ratio: 1/1; border: 3px solid #2d3748; 
+            border-radius: 10px; background: white; margin: 15px 0;
+        }
+        .cell { border: 1px solid #cbd5e0; position: relative; background: #f7fafc; }
+        .cell-number { position: absolute; top: 2px; left: 2px; font-size: 8px; color: #718096; }
+        .player { width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; position: absolute; }
+        .dice { 
+            width: 60px; height: 60px; background: linear-gradient(135deg, #ffd89b, #19547b); 
+            border: none; border-radius: 12px; font-size: 24px; cursor: pointer; margin: 10px auto;
+            display: block;
+        }
+        .game-info { background: rgba(255,255,255,0.1); padding: 10px; border-radius: 10px; margin: 10px 0; }
+        .notification {
+            position: fixed; top: 10px; right: 10px; background: #4CAF50; color: white; 
+            padding: 12px; border-radius: 8px; z-index: 1000; display: none;
+        }
+        .waiting { 
+            background: rgba(255,255,255,0.15); padding: 15px; border-radius: 10px; 
+            text-align: center; margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Main Menu -->
+        <div id="mainMenu" class="glass-effect">
+            <h1>🐍 Snakes & Ladders</h1>
+            <p style="text-align: center; opacity: 0.9;">2 Player Game</p>
+            
+            <div class="mode-buttons">
+                <button class="btn btn-primary" onclick="createGame()">🎮 Create Game</button>
+                <button class="btn btn-secondary" onclick="showJoinScreen()">👥 Join Game</button>
+            </div>
 
-# Flask App for Backend API
-app_flask = Flask(__name__)
-CORS(app_flask)
+            <div id="joinSection" style="display: none;">
+                <input type="text" id="gameCodeInput" placeholder="Enter Game Code" 
+                       style="width: 100%; padding: 12px; border-radius: 10px; border: none; margin: 10px 0;">
+                <button class="btn btn-secondary" onclick="joinGame()" style="width: 100%;">Join Game</button>
+            </div>
+        </div>
 
-# Telegram Bot Configuration - TERA EXISTING DATA
-API_ID = "23739381"
-API_HASH = "77784995504d21faf90ebb0a4bcfc37a"
-BOT_TOKEN = "8211158600:AAG8c1qJrRXKg-RGyZBgjOpXmwH4P3i4TEk"
+        <!-- Game Screen -->
+        <div id="gameScreen" class="glass-effect" style="display: none;">
+            <div id="waitingMessage" class="waiting">
+                <h3>⏳ Waiting for Player 2...</h3>
+                <p>Game Code: <strong id="gameCodeDisplay"></strong></p>
+                <p>Share this code with a friend!</p>
+            </div>
 
-# Initialize Telegram Bot
-app_telegram = Client("snake_ladder_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+            <div class="game-info" id="gameStatus">🎯 Your Turn - Roll the Dice!</div>
+            <div class="game-info" id="playersInfo"></div>
+            
+            <div class="board" id="gameBoard"></div>
 
-# Frontend URL (GitHub Pages) - TERA EXISTING BACKEND URL
-FRONTEND_URL = "https://pratHik-cmd.github.io/snake-ladder-game"  # YEH CHANGE KARNA HAI
-BACKEND_URL = "https://cot-8kof.onrender.com/api"
+            <button class="dice" id="diceBtn" onclick="rollDice()">🎲</button>
+            
+            <button class="btn" onclick="showMainMenu()" 
+                    style="background: rgba(255,255,255,0.2); color: white; width: 100%; margin-top: 10px;">
+                🏠 Main Menu
+            </button>
+        </div>
+    </div>
 
-# Database Setup
-def init_db():
-    conn = sqlite3.connect('games.db')
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS games
-                 (game_code TEXT PRIMARY KEY, players TEXT, status TEXT, 
-                  current_turn INTEGER, created_at TIMESTAMP)''')
-    conn.commit()
-    conn.close()
+    <div class="notification" id="notification"></div>
 
-init_db()
-
-# Game Management
-class GameManager:
-    def __init__(self):
-        self.games = {}
-        self.snakes = {16:6,47:26,49:11,56:53,62:19,64:60,87:24,93:73,95:75,98:78}
-        self.ladders = {1:38,4:14,9:31,21:42,28:84,36:44,51:67,71:91,80:100}
-    
-    def create_game(self, user_id, username, game_type="multiplayer"):
-        game_code = ''.join(random.choices('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', k=6))
+    <script>
+        // Game Configuration
+        const snakes = {16:6,47:26,49:11,56:53,62:19,64:60,87:24,93:73,95:75,98:78};
+        const ladders = {1:38,4:14,9:31,21:42,28:84,36:44,51:67,71:91,80:100};
+        const playerColors = ['#ff6b6b', '#4ecdc4']; // Only 2 colors
         
-        players = {
-            str(user_id): {
-                'name': username,
-                'position': 1,
-                'color': '#ff6b6b',
-                'type': 'human'
+        // Game State
+        let gameState = {
+            players: [],
+            currentPlayer: null,
+            gameActive: false,
+            gameCode: null,
+            userData: null,
+            backendUrl: 'https://cot-8kof.onrender.com/api' // YOUR RENDER.COM URL
+        };
+
+        // Telegram Web App
+        let tg = window.Telegram?.WebApp;
+
+        // Initialize
+        function initGame() {
+            if (tg) {
+                tg.expand();
+                tg.enableClosingConfirmation();
+                gameState.userData = tg.initDataUnsafe?.user;
+            }
+
+            // Check if joining via URL parameter
+            const urlParams = new URLSearchParams(window.location.search);
+            const gameCode = urlParams.get('game_code');
+            
+            if (gameCode) {
+                joinGameWithCode(gameCode);
             }
         }
-        
-        game_data = {
-            'players': players,
-            'status': 'waiting' if game_type == "multiplayer" else 'playing',
-            'current_turn': user_id,
-            'game_type': game_type,
-            'created_at': datetime.now(),
-            'min_players': 2 if game_type == "multiplayer" else 1
+
+        // Show/Hide Screens
+        function showMainMenu() {
+            document.getElementById('mainMenu').style.display = 'block';
+            document.getElementById('gameScreen').style.display = 'none';
+            document.getElementById('joinSection').style.display = 'none';
         }
-        
-        # Save to database
-        conn = sqlite3.connect('games.db')
-        c = conn.cursor()
-        c.execute('INSERT INTO games VALUES (?, ?, ?, ?, ?)',
-                  (game_code, json.dumps(players), game_data['status'], user_id, datetime.now()))
-        conn.commit()
-        conn.close()
-        
-        self.games[game_code] = game_data
-        return game_code
-    
-    def join_game(self, game_code, user_id, username):
-        if game_code not in self.games:
-            # Try to load from database
-            conn = sqlite3.connect('games.db')
-            c = conn.cursor()
-            c.execute('SELECT * FROM games WHERE game_code = ?', (game_code,))
-            result = c.fetchone()
-            conn.close()
+
+        function showJoinScreen() {
+            document.getElementById('joinSection').style.display = 'block';
+        }
+
+        // Create Game
+        async function createGame() {
+            const user = gameState.userData || {id: Date.now(), first_name: 'Player'};
             
-            if not result:
-                return False, "Game not found"
-            
-            game_data = {
-                'players': json.loads(result[1]),
-                'status': result[2],
-                'current_turn': result[3],
-                'created_at': result[4],
-                'game_type': 'multiplayer',
-                'min_players': 2
+            try {
+                const response = await fetch(gameState.backendUrl + '/create_game', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        user_id: user.id,
+                        username: user.first_name || 'Player'
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.game_code) {
+                    gameState.gameCode = result.game_code;
+                    showGameScreen();
+                    startGamePolling();
+                    showNotification('Game created! Share the code with a friend.');
+                } else {
+                    showNotification('Failed to create game');
+                }
+            } catch (error) {
+                showNotification('Error connecting to server');
             }
-            self.games[game_code] = game_data
-        
-        game = self.games[game_code]
-        
-        if game['game_type'] != 'multiplayer':
-            return False, "This is a single player game"
-        
-        if len(game['players']) >= 4:
-            return False, "Game is full"
-        
-        if str(user_id) in game['players']:
-            return False, "Already in game"
-        
-        colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4']
-        game['players'][str(user_id)] = {
-            'name': username,
-            'position': 1,
-            'color': colors[len(game['players'])],
-            'type': 'human'
         }
-        
-        # Start game if enough players
-        if len(game['players']) >= game['min_players']:
-            game['status'] = 'playing'
-        
-        # Update database
-        conn = sqlite3.connect('games.db')
-        c = conn.cursor()
-        c.execute('UPDATE games SET players = ?, status = ? WHERE game_code = ?',
-                  (json.dumps(game['players']), game['status'], game_code))
-        conn.commit()
-        conn.close()
-        
-        return True, "Joined successfully"
-    
-    def make_move(self, game_code, user_id, dice_value):
-        if game_code not in self.games:
-            return {'error': 'Game not found'}
-        
-        game = self.games[game_code]
-        
-        if game['status'] != 'playing':
-            return {'error': 'Game not active'}
-        
-        if game['current_turn'] != user_id:
-            return {'error': 'Not your turn'}
-        
-        player = game['players'][str(user_id)]
-        new_position = player['position'] + dice_value
-        
-        if new_position > 100:
-            return {'error': 'Need exact roll'}
-        
-        # Check for snakes and ladders
-        if new_position in self.snakes:
-            new_position = self.snakes[new_position]
-        elif new_position in self.ladders:
-            new_position = self.ladders[new_position]
-        
-        player['position'] = new_position
-        
-        # Check for winner
-        if new_position == 100:
-            game['status'] = 'finished'
-            return {'winner': user_id, 'new_position': new_position}
-        
-        # Next player's turn
-        player_ids = list(game['players'].keys())
-        current_index = player_ids.index(str(user_id))
-        next_index = (current_index + 1) % len(player_ids)
-        game['current_turn'] = int(player_ids[next_index])
-        
-        # Update database
-        conn = sqlite3.connect('games.db')
-        c = conn.cursor()
-        c.execute('UPDATE games SET players = ?, current_turn = ?, status = ? WHERE game_code = ?',
-                  (json.dumps(game['players']), game['current_turn'], game['status'], game_code))
-        conn.commit()
-        conn.close()
-        
-        return {'success': True, 'new_position': new_position}
 
-game_manager = GameManager()
+        // Join Game
+        async function joinGame() {
+            const gameCode = document.getElementById('gameCodeInput').value.toUpperCase();
+            if (!gameCode) {
+                showNotification('Please enter game code');
+                return;
+            }
+            joinGameWithCode(gameCode);
+        }
 
-# Flask API Routes
-@app_flask.route('/')
-def home():
-    return jsonify({
-        "status": "Snake Ladder Backend API",
-        "message": "Backend is running on Render.com!",
-        "frontend_url": FRONTEND_URL,
-        "backend_url": BACKEND_URL
-    })
-
-@app_flask.route('/api/health')
-def health_check():
-    return jsonify({"status": "healthy", "games_count": len(game_manager.games)})
-
-@app_flask.route('/api/create_game', methods=['POST'])
-def api_create_game():
-    try:
-        data = request.get_json()
-        user_id = data.get('user_id')
-        username = data.get('username')
-        game_type = data.get('game_type', 'multiplayer')
-        
-        game_code = game_manager.create_game(user_id, username, game_type)
-        return jsonify({
-            'game_code': game_code, 
-            'status': 'created',
-            'game_type': game_type
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)})
-
-@app_flask.route('/api/join_game', methods=['POST'])
-def api_join_game():
-    try:
-        data = request.get_json()
-        game_code = data.get('game_code')
-        user_id = data.get('user_id')
-        username = data.get('username')
-        
-        success, message = game_manager.join_game(game_code, user_id, username)
-        return jsonify({
-            'success': success, 
-            'error': None if success else message
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)})
-
-@app_flask.route('/api/game_state', methods=['POST'])
-def api_game_state():
-    try:
-        data = request.get_json()
-        game_code = data.get('game_code')
-        
-        if game_code in game_manager.games:
-            game = game_manager.games[game_code]
-            return jsonify({
-                'players': game['players'],
-                'current_turn': game['current_turn'],
-                'status': game['status'],
-                'game_type': game['game_type'],
-                'min_players': game['min_players'],
-                'can_start': len(game['players']) >= game['min_players']
-            })
-        else:
-            return jsonify({'error': 'Game not found'})
-    except Exception as e:
-        return jsonify({'error': str(e)})
-
-@app_flask.route('/api/make_move', methods=['POST'])
-def api_make_move():
-    try:
-        data = request.get_json()
-        game_code = data.get('game_code')
-        user_id = data.get('user_id')
-        dice_value = data.get('dice_value')
-        
-        result = game_manager.make_move(game_code, user_id, dice_value)
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({'error': str(e)})
-
-# Telegram Bot Handlers
-@app_telegram.on_message(filters.command("start"))
-async def start_command(client, message):
-    web_app_url = f"{FRONTEND_URL}?user_id={message.from_user.id}"
-    
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🎮 Play Game", web_app=WebAppInfo(url=web_app_url))],
-        [InlineKeyboardButton("👥 Create Multiplayer", callback_data="create_multiplayer")],
-        [InlineKeyboardButton("📖 How to Play", callback_data="show_help")]
-    ])
-    
-    await message.reply_text(
-        "🐍 **Snake Ladder Bot** 🎲\n\n"
-        "Welcome to the classic Snake Ladder game!\n\n"
-        "**Multiplayer Rule:** Game starts only when at least 2 players join!\n\n"
-        "Click below to start playing:",
-        reply_markup=keyboard
-    )
-
-@app_telegram.on_message(filters.command("play"))
-async def play_command(client, message):
-    game_code = game_manager.create_game(message.from_user.id, message.from_user.first_name, "multiplayer")
-    
-    web_app_url = f"{FRONTEND_URL}?game_code={game_code}&user_id={message.from_user.id}"
-    
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🎮 Open Game", web_app=WebAppInfo(url=web_app_url))],
-        [InlineKeyboardButton("📤 Share Game Code", 
-         url=f"https://t.me/share/url?url=Join my Snake Ladder game! Code: {game_code}")]
-    ])
-    
-    await message.reply_text(
-        f"🎮 **Multiplayer Game Created!**\n\n"
-        f"**Game Code:** `{game_code}`\n"
-        f"**Players:** 1/4 👥\n"
-        f"**Status:** ⏳ Waiting for players...\n\n"
-        f"**Game will start when 2 players join!**\n\n"
-        f"Share this code with friends:\n"
-        f"`{game_code}`",
-        reply_markup=keyboard
-    )
-
-@app_telegram.on_message(filters.command("join"))
-async def join_command(client, message):
-    if len(message.command) < 2:
-        await message.reply_text("❌ **Usage:** `/join GAMECODE`")
-        return
-    
-    game_code = message.command[1].upper()
-    
-    success, message_text = game_manager.join_game(game_code, message.from_user.id, message.from_user.first_name)
-    
-    if success:
-        web_app_url = f"{FRONTEND_URL}?game_code={game_code}&user_id={message.from_user.id}"
-        
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🎮 Play Now", web_app=WebAppInfo(url=web_app_url))]
-        ])
-        
-        await message.reply_text(
-            f"✅ **Joined Game Successfully!**\n\n"
-            f"**Game Code:** `{game_code}`\n"
-            f"Click below to play:",
-            reply_markup=keyboard
-        )
-    else:
-        await message.reply_text(f"❌ {message_text}")
-
-@app_telegram.on_callback_query()
-async def handle_callbacks(client, callback_query):
-    data = callback_query.data
-    
-    if data == "create_multiplayer":
-        await play_command(client, callback_query.message)
-    
-    elif data == "show_help":
-        await callback_query.message.edit_text(
-            "📖 **Game Rules:**\n"
-            "• 🎲 Roll dice to move\n"
-            "• 🐍 Snake head → Go to tail\n" 
-            "• 🪜 Ladder bottom → Climb to top\n"
-            "• 🏁 Reach exactly 100 to win!\n\n"
-            "**Multiplayer:** Starts when 2+ players join",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🎮 Start Playing", callback_data="start_playing")]
-            ])
-        )
-    
-    elif data == "start_playing":
-        await start_command(client, callback_query.message)
-
-def cleanup_games():
-    while True:
-        try:
-            cutoff = datetime.now() - timedelta(hours=2)
-            conn = sqlite3.connect('games.db')
-            c = conn.cursor()
-            c.execute('DELETE FROM games WHERE created_at < ?', (cutoff,))
-            conn.commit()
-            conn.close()
+        async function joinGameWithCode(gameCode) {
+            const user = gameState.userData || {id: Date.now(), first_name: 'Player'};
             
-            for game_code in list(game_manager.games.keys()):
-                if game_code in game_manager.games and game_manager.games[game_code]['created_at'] < cutoff:
-                    del game_manager.games[game_code]
+            try {
+                const response = await fetch(gameState.backendUrl + '/join_game', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        game_code: gameCode,
+                        user_id: user.id,
+                        username: user.first_name || 'Player'
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    gameState.gameCode = gameCode;
+                    showGameScreen();
+                    startGamePolling();
+                    showNotification('Joined game successfully!');
+                } else {
+                    showNotification(result.error || 'Failed to join game');
+                }
+            } catch (error) {
+                showNotification('Error connecting to server');
+            }
+        }
+
+        // Game Screen
+        function showGameScreen() {
+            document.getElementById('mainMenu').style.display = 'none';
+            document.getElementById('gameScreen').style.display = 'block';
+            createBoard();
+        }
+
+        // Game Polling
+        let pollInterval;
+        function startGamePolling() {
+            pollInterval = setInterval(updateGameState, 2000);
+            updateGameState(); // Immediate first update
+        }
+
+        async function updateGameState() {
+            if (!gameState.gameCode) return;
+            
+            try {
+                const response = await fetch(gameState.backendUrl + '/game_state', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({game_code: gameState.gameCode})
+                });
+                
+                const gameData = await response.json();
+                
+                if (gameData.error) {
+                    showNotification(gameData.error);
+                    return;
+                }
+                
+                updateGameUI(gameData);
+                
+            } catch (error) {
+                console.error('Error updating game:', error);
+            }
+        }
+
+        function updateGameUI(gameData) {
+            // Update players
+            gameState.players = Object.values(gameData.players || {});
+            gameState.currentPlayer = gameData.current_turn;
+            gameState.gameActive = gameData.status === 'playing';
+            
+            // Show/hide waiting message
+            const waitingDiv = document.getElementById('waitingMessage');
+            if (gameData.status === 'waiting') {
+                waitingDiv.style.display = 'block';
+                document.getElementById('gameCodeDisplay').textContent = gameState.gameCode;
+                document.getElementById('diceBtn').style.display = 'none';
+            } else {
+                waitingDiv.style.display = 'none';
+                document.getElementById('diceBtn').style.display = 'block';
+            }
+            
+            // Update UI
+            updatePlayersInfo();
+            updateGameStatus();
+            placePlayers();
+        }
+
+        // Game Functions
+        function createBoard() {
+            const board = document.getElementById('gameBoard');
+            board.innerHTML = '';
+            
+            for (let row = 10; row >= 1; row--) {
+                for (let col = 1; col <= 10; col++) {
+                    const position = row % 2 === 0 ? (row-1)*10 + col : (row-1)*10 + (11-col);
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.innerHTML = `<div class="cell-number">${position}</div>`;
                     
-        except Exception as e:
-            print(f"Cleanup error: {e}")
-        
-        time.sleep(3600)
+                    if (snakes[position]) {
+                        cell.innerHTML += `<div style="position:absolute;bottom:1px;right:1px;font-size:10px;">🐍</div>`;
+                    }
+                    if (ladders[position]) {
+                        cell.innerHTML += `<div style="position:absolute;top:1px;left:1px;font-size:10px;">🪜</div>`;
+                    }
+                    
+                    board.appendChild(cell);
+                }
+            }
+        }
 
-def run_flask():
-    port = int(os.environ.get("PORT", 5000))
-    print(f"🌐 Starting Flask Server on port {port}...")
-    app_flask.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+        function updatePlayersInfo() {
+            const container = document.getElementById('playersInfo');
+            container.innerHTML = '';
+            
+            gameState.players.forEach((player, index) => {
+                const isCurrent = player.id == gameState.currentPlayer;
+                container.innerHTML += `
+                    <div style="display: flex; justify-content: space-between; padding: 5px; 
+                         background: ${isCurrent ? 'rgba(255,255,255,0.2)' : 'transparent'}; 
+                         border-radius: 5px; margin: 2px 0;">
+                        <span>${player.username}</span>
+                        <span>Position: ${player.position}</span>
+                    </div>
+                `;
+            });
+        }
 
-if __name__ == "__main__":
-    print("🚀 Starting Snake Ladder Telegram Game System...")
-    
-    # Start cleanup thread
-    cleanup_thread = threading.Thread(target=cleanup_games, daemon=True)
-    cleanup_thread.start()
-    
-    # Start Flask in separate thread
-    flask_thread = threading.Thread(target=run_flask)
-    flask_thread.daemon = True
-    flask_thread.start()
-    
-    # Wait for Flask to start
-    time.sleep(3)
-    
-    # Start Telegram bot
-    try:
-        print("🤖 Bot is starting...")
-        app_telegram.run()
-    except Exception as e:
-        print(f"❌ Error: {e}")
+        function updateGameStatus() {
+            const status = document.getElementById('gameStatus');
+            
+            // Check for winner
+            const winner = gameState.players.find(p => p.position === 100);
+            if (winner) {
+                status.innerHTML = `🎉 ${winner.username} Wins! 🏆`;
+                gameState.gameActive = false;
+                return;
+            }
+            
+            if (!gameState.gameActive) {
+                status.innerHTML = '⏳ Waiting for players...';
+                return;
+            }
+            
+            const currentPlayer = gameState.players.find(p => p.id == gameState.currentPlayer);
+            const user = gameState.userData;
+            const isMyTurn = currentPlayer && user && currentPlayer.id == user.id;
+            
+            status.innerHTML = `🎯 ${currentPlayer?.username || 'Player'}'s Turn - ${isMyTurn ? 'Roll the Dice!' : 'Waiting...'}`;
+        }
+
+        function placePlayers() {
+            document.querySelectorAll('.player').forEach(p => p.remove());
+            
+            gameState.players.forEach((player, index) => {
+                const cells = document.querySelectorAll('.cell');
+                if (player.position <= 100 && cells[player.position - 1]) {
+                    const token = document.createElement('div');
+                    token.className = 'player';
+                    token.style.background = playerColors[index] || '#ccc';
+                    token.style.left = (index * 15 + 5) + 'px';
+                    token.style.top = '5px';
+                    cells[player.position - 1].appendChild(token);
+                }
+            });
+        }
+
+        // Dice Roll
+        async function rollDice() {
+            if (!gameState.gameActive) return;
+            
+            const user = gameState.userData;
+            if (!user) return;
+            
+            const currentPlayer = gameState.players.find(p => p.id == gameState.currentPlayer);
+            if (!currentPlayer || currentPlayer.id != user.id) {
+                showNotification("Wait for your turn!");
+                return;
+            }
+            
+            const diceBtn = document.getElementById('diceBtn');
+            diceBtn.disabled = true;
+            
+            const diceValue = Math.floor(Math.random() * 6) + 1;
+            
+            try {
+                const response = await fetch(gameState.backendUrl + '/make_move', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        game_code: gameState.gameCode,
+                        user_id: user.id,
+                        dice_value: diceValue
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.error) {
+                    showNotification(result.error);
+                }
+                
+            } catch (error) {
+                showNotification('Error making move');
+            }
+            
+            diceBtn.disabled = false;
+        }
+
+        // Utilities
+        function showNotification(message) {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.style.display = 'block';
+            setTimeout(() => notification.style.display = 'none', 3000);
+        }
+
+        // Initialize when page loads
+        window.addEventListener('DOMContentLoaded', initGame);
+    </script>
+</body>
+</html>
+
